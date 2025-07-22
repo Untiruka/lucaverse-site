@@ -15,6 +15,12 @@ html, body {
   overflow: hidden;
 }
 
+body {
+  background: #000;
+  color: #fff;
+  font-family: 'Gamja Flower';
+}
+
 /* --- Section 1: 重ね背景 --- */
 .section1 .layer {
   position: absolute;
@@ -247,4 +253,49 @@ html, body {
   80%  { opacity: 0; }
   95%  { opacity: 0.3; }
   100% { opacity: 0.2; }
+}
+
+
+.tap-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  color: #ffffffcc;
+  animation: blink 1.5s infinite;
+  cursor: pointer;
+  z-index: 10;
+  text-shadow: 0 0 5px #000;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+#menu.hidden {
+  display: none;
+}
+
+#menu {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10;
+}
+
+.menu-list li {
+  margin: 1.5rem 0;
+  font-size: 1.5rem;
+  color: white;
+  list-style: none;
+  text-shadow: 0 0 3px #000;
+}
+
+.menu-list li a {
+  text-decoration: none;
+  color: #fff;
 }
