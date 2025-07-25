@@ -1,0 +1,41 @@
+/* ✅ フォントを一番最初に import */
+@import url('https://fonts.googleapis.com/css2?family=Hepta+Slab&family=Yusei+Magic&display=swap');
+
+/* ✅ Tailwind 全体読み込み（PostCSS構成） */
+@import "tailwindcss";
+
+/* ✅ CSS変数・テーマ定義 */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* ✅ 基本bodyスタイル（上書きしてOK） */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Yusei Magic', Arial, Helvetica, sans-serif;
+}
+
+/* ✅ Tailwindで使えるようにするフォントクラス（必要なら） */
+.font-yusei {
+  font-family: 'Yusei Magic', sans-serif;
+}
+
+.font-hepta {
+  font-family: 'Hepta Slab', serif;
+}

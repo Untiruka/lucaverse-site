@@ -1,0 +1,119 @@
+/* top_style.css - トップページ専用スタイル */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  background: black;
+  font-family: 'Gamja Flower', sans-serif;
+}
+
+.section {
+  height: 100vh;
+  width: 100%;
+  position: relative;
+  scroll-snap-align: start;
+  overflow: hidden;
+}
+
+.section1 .layer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.section1 .back { z-index: 0; }
+.section1 .front {
+  z-index: 1;
+  animation: starFlow 10s ease-in-out infinite;
+}
+.section1 .twinkle {
+  z-index: 2;
+  animation: starPulse 8s ease-in-out infinite;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.tap-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Yusei Magic', sans-serif;
+  color: #4b5563; /* Tailwindのtext-gray-600 */
+  animation: pulse 1.5s infinite;
+  text-align: center;
+    z-index: 50;
+
+}
+
+/* ✅ フォントサイズだけレスポンシブ */
+@media (max-width: 639px) {
+  .tap-text {
+    font-size: 1.575rem; /* text-sm */
+  }
+}
+
+@media (min-width: 640px) and (max-width: 767px) {
+  .tap-text {
+    font-size: 1rem; /* text-base */
+  }
+}
+
+@media (min-width: 768px) {
+  .tap-text {
+    font-size: 1.125rem; /* text-lg */
+  }
+}
+
+
+@keyframes blink {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+@keyframes starFlow {
+  0% { opacity: 0.3; filter: brightness(0.8); transform: translateY(0) scale(1); }
+  50% { opacity: 1; filter: brightness(5); transform: translateY(-1%) scale(1.05); }
+  100% { opacity: 0.3; filter: brightness(0.8); transform: translateY(0) scale(1); }
+}
+@keyframes starPulse {
+  0% { opacity: 0.4; filter: brightness(0.9); }
+  25% { opacity: 0.6; filter: brightness(1.5); }
+  50% { opacity: 0.5; filter: brightness(1.2); }
+  75% { opacity: 0.7; filter: brightness(2); }
+  100% { opacity: 0.4; filter: brightness(1); }
+}
+
+.menu-list li {
+  margin: 1.2rem 0;
+  /* font-size 削除 */
+  color: white;
+  list-style: none;
+  text-shadow: 0 0 3px #000;
+}
+
+.menu-list li a {
+  text-decoration: none;
+  color: #fff;
+}
+
+/* 中央配置 */
+#menu {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10;
+}
+
+/* React制御用 */
+.menu-visible {
+  display: block !important;
+}
