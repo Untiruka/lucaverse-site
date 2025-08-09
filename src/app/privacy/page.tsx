@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         アプリ内で取得する情報、利用目的、第三者提供については以下の通りです。
       </p>
       <p className="mb-6" lang="en">
-        Our app "Tachibana" respects your privacy and recognizes the importance of protecting personal information.<br />
+        Our app &quot;Tachibana&quot; respects your privacy and recognizes the importance of protecting personal information.<br />
         The types of information collected, the purposes of use, and the sharing of information with third parties are described below.
       </p>
 
@@ -60,7 +60,7 @@ export default function PrivacyPage() {
         <br />
         <br />
         <span lang="en">
-          You can delete your account at any time from the "Settings" screen in the app.<br />
+          You can delete your account at any time from the &quot;Settings&quot; screen in the app.<br />
           If you have trouble deleting your account or need assistance, please contact us at{" "}
           <a href="mailto:hello.tachibana@proton.me" className="text-blue-300 underline">
             hello.tachibana@proton.me

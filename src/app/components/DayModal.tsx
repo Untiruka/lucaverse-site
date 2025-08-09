@@ -68,56 +68,57 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
 
   /* 予約取得 → 施術時間＋60分バッファでブロック（30分刻みで埋める） */
   useEffect(() => {
-    const fetchReserved = async () => {
-      // start_time: "HH:MM:SS", course: '30min' | '60min' | null
-      const { data, error } = await supabase
-        .from('reservation')
-        .select('start_time, course')
-        .eq('date', date)
-        .eq('status', 'confirmed')
+  const fetchReserved = async () => {
+    // start_time: "HH:MM:SS", course: '30min' | '60min' | null
+    const { data, error } = await supabase
+      .from('reservation')
+      .select('start_time, course')
+      .eq('date', date)
+      .eq('status', 'confirmed')
 
-      if (error) {
-        console.error('予約取得エラー:', error)
-        setReservedSlots([])
-        return
-      }
-
-      const blocked = new Set<string>()
-
-      ;(data || []).forEach((r: any) => {
-        const startHHMM = String(r.start_time).slice(0, 5) // "HH:MM"
-        const start = toMinutes(startHHMM)
-
-        // 施術時間（不明なら0分扱い）
-        const dur =
-          r.course === '60min' ? 60 :
-          r.course === '30min' ? 30 :
-          0
-
-        // 総ブロック時間 = 施術 + 60分バッファ（※バッファ（バッファ=余白））
-        const totalBlock = dur + 30
-
-        const blockStart = snap30(start)
-        const blockEnd = snap30(start + totalBlock)
-        for (let t = blockStart; t <= blockEnd; t += 30) {
-          blocked.add(toHHMM(t))
-        }
-
-        // course不明でも最低+60分は確保（安全側）
-        if (!r.course) {
-          const safeEnd = snap30(start + 60)
-          for (let t = blockStart; t <= safeEnd; t += 30) {
-            blocked.add(toHHMM(t))
-          }
-        }
-      })
-
-      setReservedSlots(Array.from(blocked))
+    if (error) {
+      console.error('予約取得エラー:', error)
+      setReservedSlots([])
+      return
     }
 
-    fetchReserved()
-  }, [date])
+    const blocked = new Set<string>()
 
+type ReservationRow = {
+  start_time: string // "HH:MM:SS"
+  course: '30min' | '60min' | null
+}
+
+    // ✅ any → ReservationRow に変更
+    ;(data || []).forEach((r: ReservationRow) => {
+      const startHHMM = String(r.start_time).slice(0, 5) // "HH:MM"
+      const start = toMinutes(startHHMM)
+
+      const dur =
+        r.course === '60min' ? 60 :
+        r.course === '30min' ? 30 :
+        0
+
+      const totalBlock = dur + 30 // ←（バッファ=余白）ロジックは既存のまま
+      const blockStart = snap30(start)
+      const blockEnd = snap30(start + totalBlock)
+      for (let t = blockStart; t <= blockEnd; t += 30) {
+        blocked.add(toHHMM(t))
+      }
+
+      if (!r.course) {
+        const safeEnd = snap30(start + 60)
+        for (let t = blockStart; t <= safeEnd; t += 30) {
+          blocked.add(toHHMM(t))
+        }
+      }
+    })
+
+    setReservedSlots(Array.from(blocked))
+  }
+
+  fetchReserved()
+}, [date])
   const slots = generateSlots(course)
 
   /* ヘッダ表示用の和式日付 */
@@ -127,6 +128,10 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
   }）`
 
   return (
+
+
+
+    
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3">
       <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl">
         {/* ヘッダー */}

@@ -39,10 +39,11 @@ export default function ConfirmModal(props: ConfirmModalProps) {
     setError(null)
     try {
       // --- end_time計算（60分 or 30分） ---
-      const [hour, minute] = slot.split(':').map(Number) // eslint用に残す（計算に利用）
-      let endDate = new Date(date + 'T' + slot + ':00')
-      endDate.setMinutes(endDate.getMinutes() + (course === '60min' ? 60 : 30))
-      const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
+const [_hour, _minute] = slot.split(':').map(Number)
+const endDate = new Date(date + 'T' + slot + ':00')
+endDate.setMinutes(endDate.getMinutes() + (course === '60min' ? 60 : 30))
+const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
+
 
       // --- 1) reservation insert（id取得） ---
       const { data, error } = await supabase
@@ -83,9 +84,13 @@ export default function ConfirmModal(props: ConfirmModalProps) {
       })
 
       setDone(true)
-    } catch (e: any) {
-      setError(e?.message ?? '送信に失敗しました。時間をおいてお試しください。')
-    } finally {
+    } catch (e: unknown) {
+  if (e instanceof Error) {
+    setError(e.message)
+  } else {
+    setError('送信に失敗しました。時間をおいてお試しください。')
+  }
+} finally {
       setLoading(false)
     }
   }
@@ -194,16 +199,13 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           >
             {loading ? '送信中…' : '予約送信'}
           </button>
-       <div className="mt-5 flex items-center justify-start border-t border-amber-100 px-5 py-4 gap-2">
-  {/* 閉じる（左端） */}
-  <button
-    className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
-    onClick={onClose}
-  >
-    閉じる
-  </button>
-          </div>
-
+          <button
+            className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300"
+            onClick={onClose}
+            disabled={loading}
+          >
+            閉じる
+          </button>
         </div>
       </div>
     </div>

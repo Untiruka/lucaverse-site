@@ -1,4 +1,6 @@
 "use client";
+import Image from "next/image" // ← これをファイルの
+
 import Link from "next/link"
 
 import { useState } from "react";
@@ -52,14 +54,17 @@ export default function MassageFooter() {
       )}
 
       <div className="fixed bottom-4 right-4 z-50">
-        <button onClick={() => setIsOpen(true)}>
-          <img
-            src="/image/shop.webp"
-            alt="そよ風堂"
-            className="w-24 sm:w-24 md:w-32 lg:w-40 drop-shadow-lg hover:scale-105 transition-transform"
-          />
-        </button>
-      </div>
+  <button onClick={() => setIsOpen(true)}>
+    <Image
+      src="/image/shop.webp"
+      alt="そよ風堂"
+      width={160}  // ← 仮。実寸に合わせて修正
+      height={160} // ← 仮。実寸に合わせて修正
+      className="w-24 sm:w-24 md:w-32 lg:w-40 drop-shadow-lg hover:scale-105 transition-transform"
+    />
+  </button>
+</div>
+
     </>
   );
 }
