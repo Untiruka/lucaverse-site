@@ -19,10 +19,11 @@ export default function MassageFooter() {
                 flex items-center justify-center leading-none"
             >
               ×
-            </button>
+            </button>      
+
 
             <ul className="bg-white border border-gray-300 shadow-xl rounded-xl p-6 md:p-8 space-y-3 text-base md:text-lg lg:text-xl font-yusei text-gray-800 w-64 md:w-80 lg:w-96">
-              <li><a href="/home" className="block hover:underline">Home</a></li>
+              <li><a href="/screen/home" className="block hover:underline">Home</a></li>
 <li>
   <Link href="/screen/about" className="block hover:underline">
     Lucaのマッサージとは？
@@ -30,21 +31,20 @@ export default function MassageFooter() {
 </li>          
 <li>
 <Link href="/screen/calender" className="block hover:underline">
-空き情報
+空き情報/予約カレンダー
 
  </Link>
 </li>   
 
-              <li><a href="/info" className="block hover:underline">店舗情報</a></li>
-              <li><a href="/map" className="block hover:underline">Googleマップ</a></li>
+
+              <li><a href="/screen/map" className="block hover:underline">Googleマップ/店舗情報</a></li>
 
               <li>
   <Link href="/screen/prices" className="block hover:underline">
     料金表
   </Link>
 </li>  
-              <li><a href="/calendar" className="block hover:underline">予約する</a></li>
-              <li><a href="/contact" className="block hover:underline">お問い合わせ</a></li>
+              <li><a href="/screen/contact" className="block hover:underline">お問い合わせ</a></li>
               <li><a href="/tachibana" className="block hover:underline">アプリ断ち花</a></li>
             </ul>
           </div>
