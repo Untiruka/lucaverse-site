@@ -1,10 +1,10 @@
 'use client' // ← Client Component は最上段
 
 // ------------------------------------------------------
-// ConfirmModal（見た目アップデート＋ロジック拡張）
-// ・Supabaseは getSupabaseBrowser() で「呼び出し時に生成」
-// ・end_time を「course の分数」だけ加算して保存（30/60/90対応）
-// ・try/catch は unknown → instanceof Error で扱う（any禁止）
+// ConfirmModal（INSERT→GET で id 取得／CSVモード回避）
+// ・.insert() には余計なオプション付けない（returning なし）
+// ・id は別リクエストの SELECT で取得（POST に ?columns を付けさせない）
+// ・course は string（30/60/90 など）を想定して end_time を計算
 // ------------------------------------------------------
 
 import { useState } from 'react'
@@ -12,8 +12,8 @@ import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成（
 
 type ConfirmModalProps = {
   date: string
-  course: string // ← string に拡張（'30min' | '60min' | '90min' など）
-  slot: string // "HH:MM"
+  course: string // 例 "30min" | "60min" | "90min"
+  slot: string   // "HH:MM"
   name: string
   tel: string
   email: string
@@ -30,20 +30,18 @@ function courseToMinutes(course: string): number {
 }
 
 export default function ConfirmModal(props: ConfirmModalProps) {
-  const {
-    date, course, slot, name, isFirst, tel, email, onBack, onClose, finalPrice
-  } = props
-
-  // Supabase クライアントは「コンポ内」で生成
+  const { date, course, slot, name, isFirst, tel, email, onBack, onClose, finalPrice } = props
   const supabase = getSupabaseBrowser()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // "HH:MM" + コース分を足して end_time を作る（30/60/90など可変）
+  // ------------------------------------------------------
+  // start("HH:MM") にコース分を足して end_time を作る（30/60/90 等）
+  // ------------------------------------------------------
   const calcEndTime = (startHHMM: string, courseStr: string): string => {
-    const dur = courseToMinutes(courseStr) // 30 / 60 / 90...
+    const dur = courseToMinutes(courseStr)
     const end = new Date(`${date}T${startHHMM}:00`)
     end.setMinutes(end.getMinutes() + dur)
     const hh = String(end.getHours()).padStart(2, '0')
@@ -55,54 +53,56 @@ export default function ConfirmModal(props: ConfirmModalProps) {
     setLoading(true)
     setError(null)
     try {
-      // --- end_time 計算（90分にも対応） ---
       const end_time = calcEndTime(slot, course)
 
-      // --- 1) reservation insert（id取得） ---
-      const { data, error } = await supabase
+      // ------------------------------------------------------
+      // 1) INSERT：ここでは select() を付けない（CSVモード誘発を避ける）
+      // ------------------------------------------------------
+      const insertRes = await supabase
         .from('reservation')
         .insert([{
           date,             // "YYYY-MM-DD"
           start_time: slot, // "HH:MM"
           end_time,         // "HH:MM"
-          course,           // string
+          course,           // 例: "90min"
           price: finalPrice,
           name,
           tel,
           email,
           status: 'pending',
-        }])
-        .select('id')
-        .single()
+        }]) // ← オプション無し（returning も付けない）
 
-      if (error) {
-        throw error
-      }
+      if (insertRes.error) throw insertRes.error
 
-      const reservationId: number | null = data?.id ?? null
+      // ------------------------------------------------------
+      // 2) 直後の SELECT で id を取得（同一キーで降順・1件）
+      //    ※ POST に ?columns=... を付けさせないために分離
+      // ------------------------------------------------------
+      const { data: row, error: selErr } = await supabase
+        .from('reservation')
+        .select('id')            // ← ここは GET なので CSV にならない
+        .eq('date', date)
+        .eq('start_time', slot)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      // --- 2) メールAPI（reservationId を添付） ---
+      if (selErr) throw selErr
+      const reservationId: number | null = row?.id ?? null
+
+      // ------------------------------------------------------
+      // 3) メール送信（reservationId は null でも処理できる設計に）
+      // ------------------------------------------------------
       await fetch('/api/sendMail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          slot,
-          course,
-          name,
-          tel,
-          email,
-          reservationId,
-        }),
+        body: JSON.stringify({ date, slot, course, name, tel, email, reservationId }),
       })
 
       setDone(true)
     } catch (e: unknown) {
-      if (e instanceof Error) {
-        setError(e.message)
-      } else {
-        setError('送信に失敗しました。時間をおいてお試しください。')
-      }
+      if (e instanceof Error) setError(e.message)
+      else setError('送信に失敗しました。時間をおいてお試しください。')
     } finally {
       setLoading(false)
     }
@@ -132,22 +132,15 @@ export default function ConfirmModal(props: ConfirmModalProps) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100">
           <h2 className="text-lg font-bold text-gray-800">予約内容の最終確認</h2>
-          <button onClick={onClose} className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" aria-label="閉じる" title="閉じる">
-            ×
-          </button>
+          <button onClick={onClose} className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" aria-label="閉じる" title="閉じる">×</button>
         </div>
 
         {/* 内容 */}
         <div className="px-5 py-4 space-y-3">
-          {/* 金額を強調 */}
           <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
             <div className="text-[12px] text-amber-700 font-semibold">お支払い金額</div>
-            <div className="text-2xl font-extrabold text-gray-900 mt-0.5">
-              {finalPrice.toLocaleString()}円
-            </div>
+            <div className="text-2xl font-extrabold text-gray-900 mt-0.5">{finalPrice.toLocaleString()}円</div>
           </div>
-
-          {/* 詳細リスト */}
           <ul className="text-sm text-gray-800 space-y-1">
             <li><span className="text-gray-500">日付：</span>{date}</li>
             <li><span className="text-gray-500">時間：</span>{slot}</li>
@@ -157,7 +150,6 @@ export default function ConfirmModal(props: ConfirmModalProps) {
             <li><span className="text-gray-500">メール：</span>{email}</li>
           </ul>
 
-          {/* 初回でない場合の案内 */}
           {!isFirst && (
             <div className="mt-2 rounded-lg bg-gray-50 border border-gray-200 p-3 text-[13px] text-gray-700">
               <p className="leading-relaxed">
@@ -169,7 +161,6 @@ export default function ConfirmModal(props: ConfirmModalProps) {
             </div>
           )}
 
-          {/* エラー表示 */}
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm p-2">
               {error}
@@ -177,17 +168,13 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           )}
         </div>
 
-        {/* フッター：左端に横並び（戻る→送信→閉じる） */}
+        {/* フッター */}
         <div className="px-5 py-4 border-t border-amber-100 flex items-center justify-start gap-3">
-          <button className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50" onClick={onBack} disabled={loading}>
-            戻る
-          </button>
+          <button className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50" onClick={onBack} disabled={loading}>戻る</button>
           <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
             {loading ? '送信中…' : '予約送信'}
           </button>
-          <button className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300" onClick={onClose} disabled={loading}>
-            閉じる
-          </button>
+          <button className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300" onClick={onClose} disabled={loading}>閉じる</button>
         </div>
       </div>
     </div>
