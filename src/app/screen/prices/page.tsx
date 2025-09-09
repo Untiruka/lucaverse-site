@@ -100,68 +100,8 @@ export default function PricesPage() {
           </div>
         </div>
 
-        {/* ▼ 断ち花割り（既存内容そのまま／セクション全体をカード化） */}
-        <section className="text-center space-y-6 mt-10 px-4">
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-indigo-200 p-6 shadow-md">
-            <h2 className="text-2xl font-bold text-green-700">🌿 アプリ「断ち花」提示で500円割引！</h2>
-
-            <p className="text-[18px] text-gray-700 leading-relaxed mt-2">
-              当店では、私が開発したアプリ <b className="text-green-800">「断ち花」</b> の<br />
-              <span className="underline">メイン画面を見せていただくだけで、</span>
-            </p>
-            <p className="text-[48px] font-extrabold text-red-600 my-2 drop-shadow text-center">500円割引</p>
-            <p className="text-[18px] text-gray-700 leading-relaxed">を実施しております。</p>
-            <p className="text-[17px] text-gray-600 leading-relaxed">
-              初回のお客様にも適用されます。スタッフにお気軽にご提示ください。
-            </p>
-            <p className="text-[17px] text-gray-700 leading-relaxed">
-              実は…それを見せてもらえると、<b className="text-indigo-700">私のモチベーション</b>にもなるので、<br />
-              そのお礼と言ってはなんですが…割引させていただいております 🙇‍♂️
-            </p>
-
-            {/* 既存リンクそのまま（装飾のみ） */}
-            <div className="text-[16px] text-gray-700 space-y-2 mt-5">
-              <p>
-                <b>Android：</b><br />
-                <a
-                  href="https://play.google.com/store/apps/details?id=com.iruka.tachibana"
-                  target="_blank"
-                  className="text-blue-600 underline break-all"
-                >
-                  https://play.google.com/store/apps/details?id=com.iruka.tachibana
-                </a>
-              </p>
-              <p><b>iPhone：</b><br />現在開発中です</p>
-            </div>
-          </div>
-
-          {/* 既存「アプリ紹介」セクション：カード化のみ */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-amber-100 p-6 shadow-md text-left max-w-2xl mx-auto">
-            <h2 className="text-xl font-bold text-indigo-700">📱 アプリ「断ち花」って？</h2>
-
-            <p className="text-[18px] text-gray-800 leading-relaxed mt-2">
-              「断ち花」は、<b>禁酒・禁煙・脱カフェイン・ダイエット・SNS断ち</b>など、<br />
-              あらゆる依存を「楽しく継続」するためのサポートアプリです。
-            </p>
-
-            <p className="text-[17px] text-gray-700 leading-relaxed mt-2">
-              習慣改善はどうしてもつらくなりがち。<br />
-              だからこそ、<b className="text-indigo-700">楽しさ</b>と<b className="text-indigo-700">やる気の継続</b>を重視しました。
-            </p>
-
-            <ul className="text-left text-[17px] text-gray-800 list-disc list-inside mt-4 space-y-2 leading-relaxed">
-              <li><b>節約金額の自動可視化</b>：禁欲で浮いたお金が一目でわかる</li>
-              <li><b>キャラクターと楽しむストーリー</b>：共に歩む感覚で続けられる</li>
-              <li><b>定期イベント</b>：日々の継続をもっと楽しく</li>
-            </ul>
-
-            <p className="text-[18px] text-black font-semibold mt-6">
-              あなたの「挑戦」を、少しでも楽しくするために設計されたアプリです。
-            </p>
-          </div>
-        </section>
-      </main>
-
+    
+      </main>　　
       {/* 共通フッター */}
       <MassageFooter />
     </div>
