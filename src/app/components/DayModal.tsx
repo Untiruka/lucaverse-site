@@ -1,4 +1,5 @@
-'use client'
+// src/app/components/DayModal.tsx
+'use client' // ← Client Component は必ず先頭
 
 /* DayModal（改良版）
   - 機能：
@@ -10,7 +11,7 @@
 */
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成版を使う（ビルド時実行を避ける）
 import type { ReserveInfo } from '@/src/app/components/ReserveForm'
 
 type Props = {
@@ -29,7 +30,7 @@ function getYMDStr(d: Date): string {
 }
 
 /* スロット生成（10:00〜17:00、30分刻み。60分は16:30なし） */
-const generateSlots = (course: '30min' | '60min') => {
+const generateSlots = (course: '30min' | '60min'): string[] => {
   const slots: string[] = []
   for (let h = 10; h <= 16; h++) {
     slots.push(`${String(h).padStart(2, '0')}:00`)
@@ -42,20 +43,29 @@ const generateSlots = (course: '30min' | '60min') => {
 }
 
 /* "HH:MM" → 分数（例: "10:30"→630） */
-const toMinutes = (hhmm: string) => {
+const toMinutes = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map(Number)
   return h * 60 + m
 }
 /* 分数→"HH:MM"（30分刻み固定表示） */
-const toHHMM = (mins: number) => {
+const toHHMM = (mins: number): string => {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return `${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`
 }
 /* 30分刻みに切り下げ（617→600=10:00） */
-const snap30 = (mins: number) => Math.floor(mins / 30) * 30
+const snap30 = (mins: number): number => Math.floor(mins / 30) * 30
+
+// Supabaseの行型（any禁止）
+type ReservationRow = {
+  start_time: string // "HH:MM:SS"
+  course: '30min' | '60min' | null
+}
 
 export default function DayModal({ date, onClose, onReserve }: Props) {
+  // コメント: Supabase クライアントは「呼ばれた時だけ」生成（SSR/prerenderの巻き込み回避）
+  const supabase = getSupabaseBrowser()
+
   const [course, setCourse] = useState<'30min' | '60min'>('30min')
   const [reservedSlots, setReservedSlots] = useState<string[]>([]) // 施術+60分バッファ反映後の埋まり枠
   const [slot, setSlot] = useState<string>('')
@@ -68,70 +78,62 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
 
   /* 予約取得 → 施術時間＋60分バッファでブロック（30分刻みで埋める） */
   useEffect(() => {
-  const fetchReserved = async () => {
-    // start_time: "HH:MM:SS", course: '30min' | '60min' | null
-    const { data, error } = await supabase
-      .from('reservation')
-      .select('start_time, course')
-      .eq('date', date)
-      .eq('status', 'confirmed')
+    // コメント: 指定日の予約を取得し、前後のバッファも含めて埋まり枠を算出
+    const fetchReserved = async (): Promise<void> => {
+      const { data, error } = await supabase
+        .from('reservation')
+        .select('start_time, course')
+        .eq('date', date)
+        .eq('status', 'confirmed')
 
-    if (error) {
-      console.error('予約取得エラー:', error)
-      setReservedSlots([])
-      return
-    }
-
-    const blocked = new Set<string>()
-
-type ReservationRow = {
-  start_time: string // "HH:MM:SS"
-  course: '30min' | '60min' | null
-}
-
-    // ✅ any → ReservationRow に変更
-    ;(data || []).forEach((r: ReservationRow) => {
-      const startHHMM = String(r.start_time).slice(0, 5) // "HH:MM"
-      const start = toMinutes(startHHMM)
-
-      const dur =
-        r.course === '60min' ? 60 :
-        r.course === '30min' ? 30 :
-        0
-
-      const totalBlock = dur + 30 // ←（バッファ=余白）ロジックは既存のまま
-      const blockStart = snap30(start)
-      const blockEnd = snap30(start + totalBlock)
-      for (let t = blockStart; t <= blockEnd; t += 30) {
-        blocked.add(toHHMM(t))
+      if (error) {
+        console.error('予約取得エラー:', error)
+        setReservedSlots([])
+        return
       }
 
-      if (!r.course) {
-        const safeEnd = snap30(start + 60)
-        for (let t = blockStart; t <= safeEnd; t += 30) {
+      const blocked = new Set<string>()
+
+      ;(data as ReservationRow[] | null ?? []).forEach((r: ReservationRow) => {
+        // 開始時刻 "HH:MM:SS" → "HH:MM"
+        const startHHMM = String(r.start_time).slice(0, 5)
+        const start = toMinutes(startHHMM)
+
+        // 施術時間（不明は0）＋ バッファ30分
+        const dur = r.course === '60min' ? 60 : r.course === '30min' ? 30 : 0
+        const totalBlock = dur + 30
+
+        // 30分刻みに揃えてブロック範囲を列挙
+        const blockStart = snap30(start)
+        const blockEnd = snap30(start + totalBlock)
+        for (let t = blockStart; t <= blockEnd; t += 30) {
           blocked.add(toHHMM(t))
         }
-      }
-    })
 
-    setReservedSlots(Array.from(blocked))
-  }
+        // course不明の保険：開始から+60分をブロック
+        if (!r.course) {
+          const safeEnd = snap30(start + 60)
+          for (let t = blockStart; t <= safeEnd; t += 30) {
+            blocked.add(toHHMM(t))
+          }
+        }
+      })
 
-  fetchReserved()
-}, [date])
+      setReservedSlots(Array.from(blocked))
+    }
+
+    void fetchReserved()
+  }, [date, supabase]) // ← 依存に supabase と date を入れて安全に
+
   const slots = generateSlots(course)
 
   /* ヘッダ表示用の和式日付 */
   const dateObj = new Date(`${date}T00:00:00`)
   const titleStr = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日（${
-    ['日','月','火','水','木','金','土'][dateObj.getDay()]
+    ['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()]
   }）`
 
   return (
-
-
-
-    
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3">
       <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl">
         {/* ヘッダー */}
@@ -154,10 +156,10 @@ type ReservationRow = {
           <div className="grid grid-cols-2 gap-2">
             <button
               className={[
-                "rounded-xl px-3 py-3 text-left text-sm transition",
+                'rounded-xl px-3 py-3 text-left text-sm transition',
                 course === '30min'
-                  ? "bg-amber-600 text-white shadow"
-                  : "bg-amber-50 text-amber-800 border border-amber-100 hover:bg-amber-100",
+                  ? 'bg-amber-600 text-white shadow'
+                  : 'bg-amber-50 text-amber-800 border border-amber-100 hover:bg-amber-100',
               ].join(' ')}
               onClick={() => setCourse('30min')}
               aria-pressed={course === '30min'}
@@ -170,10 +172,10 @@ type ReservationRow = {
 
             <button
               className={[
-                "rounded-xl px-3 py-3 text-left text-sm transition",
+                'rounded-xl px-3 py-3 text-left text-sm transition',
                 course === '60min'
-                  ? "bg-amber-600 text-white shadow"
-                  : "bg-amber-50 text-amber-800 border border-amber-100 hover:bg-amber-100",
+                  ? 'bg-amber-600 text-white shadow'
+                  : 'bg-amber-50 text-amber-800 border border-amber-100 hover:bg-amber-100',
               ].join(' ')}
               onClick={() => setCourse('60min')}
               aria-pressed={course === '60min'}
@@ -224,10 +226,10 @@ type ReservationRow = {
               const isDisabled = isReserved || withinNowBuffer
 
               const cls = isDisabled
-                ? "bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed"
+                ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed'
                 : isSelected
-                ? "bg-amber-600 text-white border-amber-600 ring-2 ring-amber-300"
-                : "bg-emerald-100 text-emerald-900 border-emerald-200 hover:bg-emerald-200"
+                ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-300'
+                : 'bg-emerald-100 text-emerald-900 border-emerald-200 hover:bg-emerald-200'
 
               return (
                 <button
@@ -237,10 +239,10 @@ type ReservationRow = {
                   onClick={() => !isDisabled && setSlot(t)}
                   title={
                     isReserved
-                      ? "前後のバッファ含め予約で埋まっています"
+                      ? '前後のバッファ含め予約で埋まっています'
                       : withinNowBuffer
-                      ? "現時点から60分以内のため受付不可です"
-                      : "選択できます"
+                      ? '現時点から60分以内のため受付不可です'
+                      : '選択できます'
                   }
                 >
                   {t}

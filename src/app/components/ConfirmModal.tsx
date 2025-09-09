@@ -1,21 +1,20 @@
-'use client'
+// src/app/components/ConfirmModal.tsx
+'use client' // ← Client Component は最上段
 
 // ------------------------------------------------------
-// ConfirmModal（見た目だけアップデート版／ロジックは元のまま）
-// ・暖色カードUI、金額を大きく強調
-// ・要素は見出し＋一覧で読みやすく
-// ・初回でない場合の注意文もトーン合わせ
-// ・ボタンは「左端」に横並び（戻る→予約送信→閉じる）
-// ・ヘッダー/フッターと被らんようにオーバーレイに上下パディング
+// ConfirmModal（見た目アップデート＋ロジック微修正）
+// ・Supabaseは getSupabaseBrowser() で「呼び出し時に生成」
+// ・end_time をコース時間で計算して保存
+// ・try/catch は unknown → instanceof Error で扱う（any禁止）
 // ------------------------------------------------------
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成（ビルド時実行を避ける）
 
 type ConfirmModalProps = {
   date: string
   course: '30min' | '60min'
-  slot: string
+  slot: string // "HH:MM"
   name: string
   tel: string
   email: string
@@ -30,29 +29,39 @@ export default function ConfirmModal(props: ConfirmModalProps) {
     date, course, slot, name, isFirst, tel, email, onBack, onClose, finalPrice
   } = props
 
+  // ※ Supabase クライアントは「コンポ内」で生成（import時の実行を避ける）
+  const supabase = getSupabaseBrowser()
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  const handleSubmit = async () => {
+  // "HH:MM" + コース分を足して end_time を作る
+  const calcEndTime = (startHHMM: string, course: '30min' | '60min'): string => {
+    // コメント: "YYYY-MM-DDTHH:MM:00" にして Date 計算（分を足す）
+    const end = new Date(`${date}T${startHHMM}:00`)
+    end.setMinutes(end.getMinutes() + (course === '60min' ? 60 : 30))
+    const hh = String(end.getHours()).padStart(2, '0')
+    const mm = String(end.getMinutes()).padStart(2, '0')
+    return `${hh}:${mm}` // コメント: 秒は不要なら付けない
+  }
+
+  const handleSubmit = async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
-      // --- end_time計算（60分 or 30分） ---
-const [_hour, _minute] = slot.split(':').map(Number)
-const endDate = new Date(date + 'T' + slot + ':00')
-endDate.setMinutes(endDate.getMinutes() + (course === '60min' ? 60 : 30))
-const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
-
+      // --- end_time 計算 ---
+      const end_time = calcEndTime(slot, course)
 
       // --- 1) reservation insert（id取得） ---
+      // 重要：getSupabaseBrowser() の返り値（クライアント）に対して from(...).insert(...)
       const { data, error } = await supabase
         .from('reservation')
         .insert([{
-          date,
-          start_time: slot,
-          end_time,
-          course,
+          date,             // "YYYY-MM-DD"
+          start_time: slot, // "HH:MM"
+          end_time,         // "HH:MM"
+          course,           // '30min' | '60min'
           price: finalPrice,
           name,
           tel,
@@ -66,9 +75,10 @@ const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDat
         throw error
       }
 
-      const reservationId = data?.id
+      const reservationId: number | null = data?.id ?? null
 
-      // --- 2) メールAPI（reservationIdを添付） ---
+      // --- 2) メールAPI（reservationId を添付） ---
+      // コメント: API 側でバリデーションしてください
       await fetch('/api/sendMail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,12 +95,13 @@ const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDat
 
       setDone(true)
     } catch (e: unknown) {
-  if (e instanceof Error) {
-    setError(e.message)
-  } else {
-    setError('送信に失敗しました。時間をおいてお試しください。')
-  }
-} finally {
+      // コメント: any禁止。unknown→Error に絞り込む
+      if (e instanceof Error) {
+        setError(e.message)
+      } else {
+        setError('送信に失敗しました。時間をおいてお試しください。')
+      }
+    } finally {
       setLoading(false)
     }
   }
