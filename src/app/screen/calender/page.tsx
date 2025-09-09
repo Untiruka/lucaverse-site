@@ -5,13 +5,12 @@
 // ・子幅：w-[min(560px,calc(100vw-2rem))] で右端見切れ防止
 // ・セル：min-w-[44px] / 左上=日付丸 / 右下=ステータス
 // ・過去 or full/closed → 黒半透明オーバーレイ＋操作不可
-// ・既存の予約～確認モーダルはロジック据え置き
+// ・SSG/prerender回避のため dynamic を指定（ビルド時実行を避ける）
 // ------------------------------------------------------
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic' // ←（動的レンダリング固定）
 
-
-"use client"
+"use client" // ←（Client Component 指定）
 
 import { useMemo, useState } from "react"
 import ConfirmModal from "@/src/app/components/ConfirmModal"
@@ -22,27 +21,45 @@ import ReserveForm from "@/src/app/components/ReserveForm"
 import { getSupabaseBrowser } from '@/lib/supabaseClient'
 import { ReserveInfo } from "@/src/app/components/ReserveForm"
 
+// ------------------------------------------------------
+// 型定義（any禁止のため最小限を明示）
+// ------------------------------------------------------
+type AvailabilityStatus = "open" | "full" | "closed"
 
+type AvailabilityMap = Record<string, AvailabilityStatus>
 
+type FormValues = {
+  // 予約者基本情報
+  name: string
+  tel: string
+  email: string
+  // 任意クーポン
+  coupon1?: string
+}
 
-// ▼ 空き状況（サンプル）："YYYY-MM-DD": "open" | "full" | "closed"
-const availability: Record<string, "open" | "full" | "closed"> = {
+// ------------------------------------------------------
+// 空き状況（サンプル）："YYYY-MM-DD": "open" | "full" | "closed"
+// ------------------------------------------------------
+const availability: AvailabilityMap = {
   // "2025-08-05": "open",
   // "2025-08-06": "full",
 }
 
-
-
+// ------------------------------------------------------
+// デフォルトエクスポートは **1つだけ**（重複exportエラー対策）
+// ・同コンポーネント内で supabase を生成してスコープ解決
+// ------------------------------------------------------
 export default function CalendarPage() {
+  // Supabase クライアントを「呼ばれた時にだけ」生成（ビルド時未定義対策）
+  const supabase = getSupabaseBrowser()
+
   const [modalDate, setModalDate] = useState<string | null>(null)
   const [reserveInfo, setReserveInfo] = useState<ReserveInfo | null>(null)
   const [confirming, setConfirming] = useState(false)
-  const [formValues, setFormValues] = useState<{ name: string; tel: string; email: string } | null>(null)
+  const [formValues, setFormValues] = useState<FormValues | null>(null)
   const [isFirst, setIsFirst] = useState<boolean | null>(null)
-    const supabase = getSupabaseBrowser()
 
-
-  // 全閉じ
+  // 全閉じ（モーダル等の状態をまとめてリセット）
   const closeAll = () => {
     setReserveInfo(null)
     setFormValues(null)
@@ -82,6 +99,7 @@ export default function CalendarPage() {
               date={modalDate}
               onClose={() => setModalDate(null)}
               onReserve={(info) => {
+                // コメント：日付モーダルから予約情報（仮）を受け取りフォームへ
                 setReserveInfo(info)
                 setModalDate(null)
               }}
@@ -96,29 +114,32 @@ export default function CalendarPage() {
           <div className="bg-white rounded-2xl border border-amber-100 shadow-2xl w-full max-w-lg mx-4 p-4 md:p-5">
             <ReserveForm
               info={reserveInfo}
-              onNext={async (values) => {
-                // --- 初回判定 ---
+              onNext={async (values: FormValues) => {
+                // --- 初回判定（過去に確定予約があるか） ---
                 const { data: prev } = await supabase
                   .from("reservation")
                   .select("id")
                   .or(`tel.eq.${values.tel},email.eq.${values.email},name.eq.${values.name}`)
                   .eq("status", "confirmed")
                   .limit(1)
-                const isFirst = !prev || prev.length === 0
+
+                const firstTime = !prev || prev.length === 0
 
                 // --- クーポン例（coupon1） ---
                 let validCouponDiscount = 0
                 let usedCouponCode = ""
                 if (values.coupon1) {
+                  const todayIso = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
                   const { data: c } = await supabase
                     .from("coupons")
                     .select("amount")
                     .eq("code", values.coupon1)
                     .eq("used", false)
-                    .gte("valid_from", new Date().toISOString().slice(0, 10))
-                    .lte("valid_until", new Date().toISOString().slice(0, 10))
+                    .gte("valid_from", todayIso)
+                    .lte("valid_until", todayIso)
                     .single()
-                  if (c && c.amount) {
+
+                  if (c && typeof c.amount === "number") {
                     validCouponDiscount = c.amount
                     usedCouponCode = values.coupon1
                   }
@@ -126,9 +147,8 @@ export default function CalendarPage() {
 
                 // --- 金額計算 ---
                 let finalPrice = reserveInfo.basePrice
-                if (isFirst && reserveInfo.firstPrice) finalPrice = reserveInfo.firstPrice
-                if (validCouponDiscount) finalPrice -= validCouponDiscount
-                finalPrice = Math.max(finalPrice, 0)
+                if (firstTime && reserveInfo.firstPrice) finalPrice = reserveInfo.firstPrice
+                if (validCouponDiscount) finalPrice = Math.max(finalPrice - validCouponDiscount, 0)
 
                 // --- 反映 ---
                 setReserveInfo({
@@ -138,7 +158,7 @@ export default function CalendarPage() {
                   couponCode: usedCouponCode,
                 })
                 setFormValues(values)
-                setIsFirst(isFirst)
+                setIsFirst(firstTime)
                 setConfirming(true)
               }}
               onClose={closeAll}
@@ -165,7 +185,7 @@ export default function CalendarPage() {
               slot={reserveInfo.slot}
               name={formValues.name}
               tel={formValues.tel}
-              finalPrice={reserveInfo.finalPrice!}
+              finalPrice={reserveInfo.finalPrice!} // ←（ReserveInfo側でoptionalなら実値確定後に使用）
               email={formValues.email}
               isFirst={isFirst}
               onBack={() => setConfirming(false)}
@@ -187,7 +207,7 @@ export default function CalendarPage() {
 type CalProps = {
   months?: number
   onSelectDate: (dateStr: string) => void
-  availability?: Record<string, "open" | "full" | "closed">
+  availability?: AvailabilityMap
 }
 
 function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: CalProps) {
@@ -208,7 +228,7 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
 
   const weekNames = ["日", "月", "火", "水", "木", "金", "土"]
 
-  // YYYY-MM-DD
+  // YYYY-MM-DD（ゼロ埋めISO）
   const toISO = (d: Date) => {
     const y = d.getFullYear()
     const m = `${d.getMonth() + 1}`.padStart(2, "0")
@@ -316,9 +336,7 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
                       )}
 
                       {/* ▼ 黒塗りオーバーレイ（過去/満了/休） */}
-                      {isDisabled && (
-                        <span className="absolute inset-0 bg-black/55" />
-                      )}
+                      {isDisabled && <span className="absolute inset-0 bg-black/55" />}
                     </div>
                   )
                 })}
@@ -333,8 +351,8 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
 
 /* --------------------------
   スクロールバー非表示（任意）
+  - Client Component内で実行（document参照はブラウザ限定）
 ---------------------------*/
-
 if (typeof document !== "undefined") {
   const style = document.createElement("style")
   style.innerHTML = `
