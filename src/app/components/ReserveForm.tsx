@@ -1,12 +1,14 @@
 'use client'
 
-// ------------------------------------------------------
-// ReserveForm（見た目アップデート版：機能は元のまま）
-// ・暖色カード風の入力群（label/placeholder整理）
-// ・SPでも押しやすいサイズ / フォーカスリング明確化
-// ・バリデーションは簡易（必須3項目が空ならボタン無効）
-// ・クーポン欄はそのまま3枠（任意）
-// ------------------------------------------------------
+/* ------------------------------------------------------
+   ReserveForm（見た目アップデート版：機能は元のまま）
+   - 暖色カード風の入力群（label/placeholder整理）
+   - SPでも押しやすいサイズ / フォーカスリング明確化
+   - バリデーションは簡易（必須3項目が空ならボタン無効）
+   - クーポン欄はそのまま3枠（任意）
+   - 変更点：
+     * ReserveInfo.course を string に拡張（'30min' | '60min' | '90min' などを許容）
+------------------------------------------------------ */
 
 import { useState } from 'react'
 
@@ -23,16 +25,16 @@ type ReserveFormProps = {
   onClose?: () => void
 }
 
+/** 予約情報（course を string 化） */
 export type ReserveInfo = {
   date: string
-  course: '30min' | '60min'
+  course: string // ← ここを string に拡張（例: '30min' | '60min' | '90min'）
   slot: string
   basePrice: number
   firstPrice?: number
   couponDiscount?: number
   couponCode?: string
   finalPrice?: number
-  // ※ ここに追加したい拡張があれば適宜どうぞ
 }
 
 export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps) {
@@ -46,7 +48,7 @@ export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps)
 
   const disabled = !name || !tel || !email // ← 必須3項目のどれか空で無効
 
-  // ▼ 画面上部の予約概要（元文言を残しつつ視認性UP）
+  // ▼ 画面上部の予約概要（文言は現状踏襲）
   const summary = `予約内容：${info.date} ${info.slot}〜 / ${info.course}`
 
   return (
@@ -68,7 +70,6 @@ export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps)
           className="w-full rounded-xl border border-amber-100 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-amber-300"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          // ※ IMEありでOK
         />
       </div>
 
@@ -77,7 +78,7 @@ export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps)
         <label className="block text-gray-700 font-medium">電話番号 <span className="text-red-500 text-xs">必須</span></label>
         <input
           type="tel"
-          inputMode="tel" // ← スマホで数字キーボード
+          inputMode="tel"
           placeholder="例）09012345678"
           className="w-full rounded-xl border border-amber-100 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-amber-300"
           value={tel}
@@ -91,7 +92,7 @@ export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps)
         <label className="block text-gray-700 font-medium">メールアドレス <span className="text-red-500 text-xs">必須</span></label>
         <input
           type="email"
-          inputMode="email" // ← スマホで@入力しやすい
+          inputMode="email"
           placeholder="例）sample@example.com"
           className="w-full rounded-xl border border-amber-100 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-amber-300"
           value={email}
@@ -137,9 +138,7 @@ export default function ReserveForm({ info, onNext, onClose }: ReserveFormProps)
       <div className="space-y-2">
         <button
           disabled={disabled}
-          onClick={() =>
-            onNext({ name, tel, email, coupon1, coupon2, coupon3 })
-          }
+          onClick={() => onNext({ name, tel, email, coupon1, coupon2, coupon3 })}
           className="w-full rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           確認画面へ

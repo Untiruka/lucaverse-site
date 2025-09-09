@@ -1,10 +1,9 @@
-// src/app/components/ConfirmModal.tsx
 'use client' // ← Client Component は最上段
 
 // ------------------------------------------------------
-// ConfirmModal（見た目アップデート＋ロジック微修正）
+// ConfirmModal（見た目アップデート＋ロジック拡張）
 // ・Supabaseは getSupabaseBrowser() で「呼び出し時に生成」
-// ・end_time をコース時間で計算して保存
+// ・end_time を「course の分数」だけ加算して保存（30/60/90対応）
 // ・try/catch は unknown → instanceof Error で扱う（any禁止）
 // ------------------------------------------------------
 
@@ -13,7 +12,7 @@ import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成（
 
 type ConfirmModalProps = {
   date: string
-  course: '30min' | '60min'
+  course: string // ← string に拡張（'30min' | '60min' | '90min' など）
   slot: string // "HH:MM"
   name: string
   tel: string
@@ -24,44 +23,49 @@ type ConfirmModalProps = {
   isFirst: boolean
 }
 
+/** "30min" 等から分数を抽出（未知値は30にフォールバック） */
+function courseToMinutes(course: string): number {
+  const m = parseInt(course.replace(/[^0-9]/g, ''), 10)
+  return Number.isFinite(m) && m > 0 ? m : 30
+}
+
 export default function ConfirmModal(props: ConfirmModalProps) {
   const {
     date, course, slot, name, isFirst, tel, email, onBack, onClose, finalPrice
   } = props
 
-  // ※ Supabase クライアントは「コンポ内」で生成（import時の実行を避ける）
+  // Supabase クライアントは「コンポ内」で生成
   const supabase = getSupabaseBrowser()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // "HH:MM" + コース分を足して end_time を作る
-  const calcEndTime = (startHHMM: string, course: '30min' | '60min'): string => {
-    // コメント: "YYYY-MM-DDTHH:MM:00" にして Date 計算（分を足す）
+  // "HH:MM" + コース分を足して end_time を作る（30/60/90など可変）
+  const calcEndTime = (startHHMM: string, courseStr: string): string => {
+    const dur = courseToMinutes(courseStr) // 30 / 60 / 90...
     const end = new Date(`${date}T${startHHMM}:00`)
-    end.setMinutes(end.getMinutes() + (course === '60min' ? 60 : 30))
+    end.setMinutes(end.getMinutes() + dur)
     const hh = String(end.getHours()).padStart(2, '0')
     const mm = String(end.getMinutes()).padStart(2, '0')
-    return `${hh}:${mm}` // コメント: 秒は不要なら付けない
+    return `${hh}:${mm}`
   }
 
   const handleSubmit = async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
-      // --- end_time 計算 ---
+      // --- end_time 計算（90分にも対応） ---
       const end_time = calcEndTime(slot, course)
 
       // --- 1) reservation insert（id取得） ---
-      // 重要：getSupabaseBrowser() の返り値（クライアント）に対して from(...).insert(...)
       const { data, error } = await supabase
         .from('reservation')
         .insert([{
           date,             // "YYYY-MM-DD"
           start_time: slot, // "HH:MM"
           end_time,         // "HH:MM"
-          course,           // '30min' | '60min'
+          course,           // string
           price: finalPrice,
           name,
           tel,
@@ -78,7 +82,6 @@ export default function ConfirmModal(props: ConfirmModalProps) {
       const reservationId: number | null = data?.id ?? null
 
       // --- 2) メールAPI（reservationId を添付） ---
-      // コメント: API 側でバリデーションしてください
       await fetch('/api/sendMail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,7 +98,6 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
       setDone(true)
     } catch (e: unknown) {
-      // コメント: any禁止。unknown→Error に絞り込む
       if (e instanceof Error) {
         setError(e.message)
       } else {
@@ -109,18 +111,12 @@ export default function ConfirmModal(props: ConfirmModalProps) {
   // --- 完了画面 ---
   if (done) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3"
-        style={{ paddingTop: '80px', paddingBottom: '100px' }} // ヘッダー/フッター回避
-      >
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
         <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl p-6">
           <div className="text-green-700 font-bold text-lg mb-2">予約が完了しました！</div>
           <p className="text-sm text-gray-700">確認メールをお送りしました。ご来店お待ちしております。</p>
           <div className="mt-5">
-            <button
-              className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
-              onClick={onClose}
-            >
+            <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700" onClick={onClose}>
               閉じる
             </button>
           </div>
@@ -131,20 +127,12 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
   // --- 確認画面 ---
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3"
-      style={{ paddingTop: '80px', paddingBottom: '100px' }} // ヘッダー/フッター回避
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
       <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl overflow-hidden">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100">
           <h2 className="text-lg font-bold text-gray-800">予約内容の最終確認</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-            aria-label="閉じる"
-            title="閉じる"
-          >
+          <button onClick={onClose} className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" aria-label="閉じる" title="閉じる">
             ×
           </button>
         </div>
@@ -163,7 +151,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           <ul className="text-sm text-gray-800 space-y-1">
             <li><span className="text-gray-500">日付：</span>{date}</li>
             <li><span className="text-gray-500">時間：</span>{slot}</li>
-            <li><span className="text-gray-500">コース：</span>{course === '60min' ? '60分' : '30分'}</li>
+            <li><span className="text-gray-500">コース：</span>{course.replace('min','分')}</li>
             <li><span className="text-gray-500">お名前：</span>{name}</li>
             <li><span className="text-gray-500">電話番号：</span>{tel}</li>
             <li><span className="text-gray-500">メール：</span>{email}</li>
@@ -175,12 +163,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
               <p className="leading-relaxed">
                 ※ あなたは初回ではないため通常料金になります。<br />
                 もし「初めて予約したはずなのに？」という場合は
-                <a
-                  href="mailto:lucaverce_massage@yahoo.co.jp"
-                  className="text-amber-700 underline ml-1"
-                >
-                  お問い合わせ
-                </a>
+                <a href="mailto:lucaverce_massage@yahoo.co.jp" className="text-amber-700 underline ml-1">お問い合わせ</a>
                 ください。
               </p>
             </div>
@@ -196,25 +179,13 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
         {/* フッター：左端に横並び（戻る→送信→閉じる） */}
         <div className="px-5 py-4 border-t border-amber-100 flex items-center justify-start gap-3">
-          <button
-            className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
-            onClick={onBack}
-            disabled={loading}
-          >
+          <button className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50" onClick={onBack} disabled={loading}>
             戻る
           </button>
-          <button
-            className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleSubmit}
-            disabled={loading}
-          >
+          <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
             {loading ? '送信中…' : '予約送信'}
           </button>
-          <button
-            className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300"
-            onClick={onClose}
-            disabled={loading}
-          >
+          <button className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300" onClick={onClose} disabled={loading}>
             閉じる
           </button>
         </div>
