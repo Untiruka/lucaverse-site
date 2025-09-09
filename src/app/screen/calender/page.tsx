@@ -8,9 +8,11 @@
 // ・SSG/prerender回避のため dynamic を指定（ビルド時実行を避ける）
 // ------------------------------------------------------
 
-export const dynamic = 'force-dynamic' // ←（動的レンダリング固定）
 
 "use client" // ←（Client Component 指定）
+
+export const dynamic = 'force-dynamic' // ←（動的レンダリング固定）
+
 
 import { useMemo, useState } from "react"
 import ConfirmModal from "@/src/app/components/ConfirmModal"
