@@ -8,6 +8,9 @@
 // ・既存の予約～確認モーダルはロジック据え置き
 // ------------------------------------------------------
 
+export const dynamic = 'force-dynamic'
+
+
 "use client"
 
 import { useMemo, useState } from "react"
@@ -16,8 +19,11 @@ import DayModal from "@/src/app/components/DayModal"
 import MassageHeader from "../../components/MassageHeader"
 import MassageFooter from "../../components/MassageFooter"
 import ReserveForm from "@/src/app/components/ReserveForm"
-import { supabase } from "@/lib/supabaseClient"
+import { getSupabaseBrowser } from '@/lib/supabaseClient'
 import { ReserveInfo } from "@/src/app/components/ReserveForm"
+
+
+
 
 // ▼ 空き状況（サンプル）："YYYY-MM-DD": "open" | "full" | "closed"
 const availability: Record<string, "open" | "full" | "closed"> = {
@@ -25,12 +31,16 @@ const availability: Record<string, "open" | "full" | "closed"> = {
   // "2025-08-06": "full",
 }
 
+
+
 export default function CalendarPage() {
   const [modalDate, setModalDate] = useState<string | null>(null)
   const [reserveInfo, setReserveInfo] = useState<ReserveInfo | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [formValues, setFormValues] = useState<{ name: string; tel: string; email: string } | null>(null)
   const [isFirst, setIsFirst] = useState<boolean | null>(null)
+    const supabase = getSupabaseBrowser()
+
 
   // 全閉じ
   const closeAll = () => {
