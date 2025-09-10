@@ -166,17 +166,24 @@ export default function ConfirmModal(props: ConfirmModalProps) {
   // --- 完了画面 ---
   if (done) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify中心 bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
-        <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl p-6">
-          <div className="text-green-700 font-bold text-lg mb-2">予約が完了しました！</div>
-          <p className="text-sm text-gray-700">確認メールをお送りしました。ご来店お待ちしております。</p>
-          <div className="mt-5">
-            <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700" onClick={onClose}>
-              閉じる
-            </button>
-          </div>
-        </div>
-      </div>
+     <div
+  className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3"
+  style={{ paddingTop: '80px', paddingBottom: '100px' }}
+>
+  {/* ★ 保険で mx-auto 追加（親flexが効かん環境でも中央化） */}
+  <div className="w-full max-w-md mx-auto rounded-2xl border border-amber-100 bg-white shadow-2xl p-6">
+    <div className="text-green-700 font-bold text-lg mb-2">予約が完了しました！</div>
+    <p className="text-sm text-gray-700">確認メールをお送りしました。ご来店お待ちしております。</p>
+    <div className="mt-5">
+      <button
+        className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
+        onClick={onClose}
+      >
+        閉じる
+      </button>
+    </div>
+  </div>
+</div>
     )
   }
 
