@@ -1,22 +1,23 @@
 'use client' // ← Client Component は最上段
 
 // ------------------------------------------------------
-// ConfirmModal（INSERT→GET で id 取得／CSVモード回避＋詳細デバッグ）
-// ・.insert() にオプションは付けない（returning なし）
-// ・id は別リクエストの SELECT で取得（POST に ?columns を付けさせない）
-// ・course は string（30/60/90 など）を想定して end_time を計算
-// ・失敗時は PostgREST の code/message/details/hint をまとめて console.error へ出力
+// ConfirmModal（保存時の値をDB制約に完全準拠／IDは別SELECT／詳細デバッグ）
+// ・course を保存用に正規化（'30min','60min','90' 等）← DBの CHECK に合わせる
+// ・tel を保存用に E.164 形式へ正規化（+81…）← DBの CHECK に合わせる
+// ・INSERT では .select() を使わない（POSTに?columnsが付いても問題化しない）
+// ・IDは直後に別SELECTで取得
+// ・失敗時は code/message/details/hint を console.error に全部出力
 // ------------------------------------------------------
 
 import { useState } from 'react'
-import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成（ビルド時実行を避ける）
+import { getSupabaseBrowser } from '@/lib/supabaseClient'
 
 type ConfirmModalProps = {
   date: string
-  course: string // 例 "30min" | "60min" | "90min"
-  slot: string   // "HH:MM"
+  course: string            // 例: "30min" | "60min" | "90min"（画面表示はこのまま）
+  slot: string              // "HH:MM"
   name: string
-  tel: string
+  tel: string               // 例: "09012345678" など（保存時に +81 へ正規化）
   email: string
   finalPrice: number
   onBack: () => void
@@ -24,10 +25,38 @@ type ConfirmModalProps = {
   isFirst: boolean
 }
 
-/** "30min" 等から分数を抽出（未知値は30にフォールバック） */
+/** "30min" 等から分数（number）を抽出（未知値は30でフォールバック） */
 function courseToMinutes(course: string): number {
+  // 数字だけ抜き出して変換（"90min"→90, "90"→90）
   const m = parseInt(course.replace(/[^0-9]/g, ''), 10)
   return Number.isFinite(m) && m > 0 ? m : 30
+}
+
+/** DBのCHECK制約に合わせた course 正規化（保存用）
+ *  - 現在の制約: {'30min','60min','60','90','120','150','180','210'}
+ *  - 方針:
+ *    * 30分 → '30min'
+ *    * 60分 → '60min'（DBは'60'も可やけど '60min'で統一）
+ *    * 90分以上 → 数値のみ文字列（'90','120','150','180','210'）
+ */
+function normalizeCourseForDB(course: string): string {
+  const m = courseToMinutes(course)
+  if (m === 30) return '30min'
+  if (m === 60) return '60min'
+  return String(m)
+}
+
+/** 電話番号をE.164へ正規化（保存用）
+ *  - 国内想定: 先頭0なら +81 に変換（例: "09012345678" → "+819012345678"）
+ *  - 既に "+" 始まりはそのまま
+ *  - 数字以外は除去
+ */
+function toE164(tel: string): string {
+  const raw = tel.replace(/[^\d+]/g, '')
+  if (raw.startsWith('+')) return raw
+  if (raw.startsWith('0')) return '+81' + raw.slice(1)
+  // 国番号不明は日本前提で +81 を付与（運用に合わせて調整可）
+  return '+81' + raw
 }
 
 export default function ConfirmModal(props: ConfirmModalProps) {
@@ -38,9 +67,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // ------------------------------------------------------
-  // start("HH:MM") にコース分を足して end_time を作る（30/60/90 等）
-  // ------------------------------------------------------
+  /** 開始"HH:MM"にコース分を足して終了"HH:MM"を作成（30/60/90対応） */
   const calcEndTime = (startHHMM: string, courseStr: string): string => {
     const dur = courseToMinutes(courseStr) // 30/60/90...
     const end = new Date(`${date}T${startHHMM}:00`)
@@ -54,44 +81,42 @@ export default function ConfirmModal(props: ConfirmModalProps) {
     setLoading(true)
     setError(null)
     try {
-      const end_time = calcEndTime(slot, course)
+      // ▼ 表示用はそのまま、保存用は正規化してDB制約に完全準拠
+      const end_time   = calcEndTime(slot, course)
+      const courseDb   = normalizeCourseForDB(course) // ★ '90min' → '90' など
+      const telE164    = toE164(tel)                  // ★ "090…" → "+81…"
 
-      // ------------------------------------------------------
-      // 1) INSERT：select() を付けない（CSVモード誘発を避ける）
-      // ------------------------------------------------------
+      // --- 1) INSERT（.select() 付けない） ---
       const insertRes = await supabase
         .from('reservation')
         .insert([{
           date,             // "YYYY-MM-DD"
           start_time: slot, // "HH:MM"
           end_time,         // "HH:MM"
-          course,           // 例: "90min"
+          course: courseDb, // ★ DBチェックに合う形だけ保存
           price: finalPrice,
           name,
-          tel,
+          tel: telE164,     // ★ E.164形式で保存
           email,
           status: 'pending',
-        }]) // ← オプション無し（returning も付けない）
+        }])
 
-      // --- 失敗時の詳細ログ（本番前に削除推奨） ---
       if (insertRes.error) {
+        // 失敗詳細を全部ログ（本番前に削除推奨）
         console.error('INSERT ERROR', {
-          code: insertRes.error.code,        // （例）23514=CHECK違反 / 42501=RLSなど
+          code: insertRes.error.code,        // 例: 23514=CHECK違反, 42501=RLS
           message: insertRes.error.message,  // 人間可読メッセージ
-          details: insertRes.error.details,  // 具体的な違反内容（制約名等）
-          hint: insertRes.error.hint,        // ヒント（ある場合）
-          payload: { date, slot, end_time, course, price: finalPrice, name, tel, email, status: 'pending' },
+          details: insertRes.error.details,  // 具体内容（制約名など）
+          hint: insertRes.error.hint,        // ヒント
+          payload: { date, slot, end_time, courseDb, price: finalPrice, name, telE164, email, status: 'pending' },
         })
         throw insertRes.error
       }
 
-      // ------------------------------------------------------
-      // 2) 直後の SELECT で id を取得（同一キーで降順・1件）
-      //    ※ POST に ?columns=... を付けさせないために分離
-      // ------------------------------------------------------
+      // --- 2) IDを別SELECTで取得（POSTに?columnsが付く問題と切り離し） ---
       const { data: row, error: selErr } = await supabase
         .from('reservation')
-        .select('id')            // ← ここは GET（通常JSON）
+        .select('id')
         .eq('date', date)
         .eq('start_time', slot)
         .order('id', { ascending: false })
@@ -99,7 +124,6 @@ export default function ConfirmModal(props: ConfirmModalProps) {
         .maybeSingle()
 
       if (selErr) {
-        // --- 取得失敗時のログ（本番前に削除推奨） ---
         console.error('SELECT ID ERROR', {
           code: selErr.code,
           message: selErr.message,
@@ -112,13 +136,22 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
       const reservationId: number | null = row?.id ?? null
 
-      // ------------------------------------------------------
-      // 3) メール送信（reservationId は null でも処理できる設計に）
-      // ------------------------------------------------------
+      // --- 3) メール送信（必要に応じて保存用/表示用を使い分け） ---
       await fetch('/api/sendMail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, slot, course, name, tel, email, reservationId }),
+        body: JSON.stringify({
+          date,
+          slot,
+          // メールには“見たまま”を載せたい場合は course をそのまま送る
+          course,            // 例: "90min"（表示用）
+          courseDb,          // 例: "90"（保存用）←ログやバックオフィス用に同梱もアリ
+          name,
+          tel: tel,          // 通知はユーザー入力のまま見せたいなら raw を送る
+          telE164,           // 保存実体を併記したいなら同梱
+          email,
+          reservationId,
+        }),
       })
 
       setDone(true)
@@ -133,7 +166,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
   // --- 完了画面 ---
   if (done) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
+      <div className="fixed inset-0 z-50 flex items-center justify中心 bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
         <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl p-6">
           <div className="text-green-700 font-bold text-lg mb-2">予約が完了しました！</div>
           <p className="text-sm text-gray-700">確認メールをお送りしました。ご来店お待ちしております。</p>
@@ -149,7 +182,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
   // --- 確認画面 ---
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify中心 bg-black/45 px-3" style={{ paddingTop: '80px', paddingBottom: '100px' }}>
       <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl overflow-hidden">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100">
@@ -165,7 +198,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
             <div className="text-2xl font-extrabold text-gray-900 mt-0.5">{finalPrice.toLocaleString()}円</div>
           </div>
 
-          {/* 詳細リスト */}
+          {/* 詳細（画面表示は“見たまま”の course を使用） */}
           <ul className="text-sm text-gray-800 space-y-1">
             <li><span className="text-gray-500">日付：</span>{date}</li>
             <li><span className="text-gray-500">時間：</span>{slot}</li>
@@ -195,10 +228,10 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           )}
         </div>
 
-        {/* フッター：左端に横並び（戻る→送信→閉じる） */}
+        {/* フッター */}
         <div className="px-5 py-4 border-t border-amber-100 flex items-center justify-start gap-3">
           <button className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50" onClick={onBack} disabled={loading}>戻る</button>
-          <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text白 shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
+          <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
             {loading ? '送信中…' : '予約送信'}
           </button>
           <button className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300" onClick={onClose} disabled={loading}>閉じる</button>
