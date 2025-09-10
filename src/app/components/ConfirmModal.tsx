@@ -1,10 +1,11 @@
 'use client' // ← Client Component は最上段
 
 // ------------------------------------------------------
-// ConfirmModal（INSERT→GET で id 取得／CSVモード回避）
-// ・.insert() には余計なオプション付けない（returning なし）
+// ConfirmModal（INSERT→GET で id 取得／CSVモード回避＋詳細デバッグ）
+// ・.insert() にオプションは付けない（returning なし）
 // ・id は別リクエストの SELECT で取得（POST に ?columns を付けさせない）
 // ・course は string（30/60/90 など）を想定して end_time を計算
+// ・失敗時は PostgREST の code/message/details/hint をまとめて console.error へ出力
 // ------------------------------------------------------
 
 import { useState } from 'react'
@@ -41,7 +42,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
   // start("HH:MM") にコース分を足して end_time を作る（30/60/90 等）
   // ------------------------------------------------------
   const calcEndTime = (startHHMM: string, courseStr: string): string => {
-    const dur = courseToMinutes(courseStr)
+    const dur = courseToMinutes(courseStr) // 30/60/90...
     const end = new Date(`${date}T${startHHMM}:00`)
     end.setMinutes(end.getMinutes() + dur)
     const hh = String(end.getHours()).padStart(2, '0')
@@ -56,7 +57,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
       const end_time = calcEndTime(slot, course)
 
       // ------------------------------------------------------
-      // 1) INSERT：ここでは select() を付けない（CSVモード誘発を避ける）
+      // 1) INSERT：select() を付けない（CSVモード誘発を避ける）
       // ------------------------------------------------------
       const insertRes = await supabase
         .from('reservation')
@@ -72,7 +73,17 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           status: 'pending',
         }]) // ← オプション無し（returning も付けない）
 
-      if (insertRes.error) throw insertRes.error
+      // --- 失敗時の詳細ログ（本番前に削除推奨） ---
+      if (insertRes.error) {
+        console.error('INSERT ERROR', {
+          code: insertRes.error.code,        // （例）23514=CHECK違反 / 42501=RLSなど
+          message: insertRes.error.message,  // 人間可読メッセージ
+          details: insertRes.error.details,  // 具体的な違反内容（制約名等）
+          hint: insertRes.error.hint,        // ヒント（ある場合）
+          payload: { date, slot, end_time, course, price: finalPrice, name, tel, email, status: 'pending' },
+        })
+        throw insertRes.error
+      }
 
       // ------------------------------------------------------
       // 2) 直後の SELECT で id を取得（同一キーで降順・1件）
@@ -80,14 +91,25 @@ export default function ConfirmModal(props: ConfirmModalProps) {
       // ------------------------------------------------------
       const { data: row, error: selErr } = await supabase
         .from('reservation')
-        .select('id')            // ← ここは GET なので CSV にならない
+        .select('id')            // ← ここは GET（通常JSON）
         .eq('date', date)
         .eq('start_time', slot)
         .order('id', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (selErr) throw selErr
+      if (selErr) {
+        // --- 取得失敗時のログ（本番前に削除推奨） ---
+        console.error('SELECT ID ERROR', {
+          code: selErr.code,
+          message: selErr.message,
+          details: selErr.details,
+          hint: selErr.hint,
+          key: { date, start_time: slot },
+        })
+        throw selErr
+      }
+
       const reservationId: number | null = row?.id ?? null
 
       // ------------------------------------------------------
@@ -137,10 +159,13 @@ export default function ConfirmModal(props: ConfirmModalProps) {
 
         {/* 内容 */}
         <div className="px-5 py-4 space-y-3">
+          {/* 金額を強調 */}
           <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
             <div className="text-[12px] text-amber-700 font-semibold">お支払い金額</div>
             <div className="text-2xl font-extrabold text-gray-900 mt-0.5">{finalPrice.toLocaleString()}円</div>
           </div>
+
+          {/* 詳細リスト */}
           <ul className="text-sm text-gray-800 space-y-1">
             <li><span className="text-gray-500">日付：</span>{date}</li>
             <li><span className="text-gray-500">時間：</span>{slot}</li>
@@ -150,6 +175,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
             <li><span className="text-gray-500">メール：</span>{email}</li>
           </ul>
 
+          {/* 初回でない場合の案内 */}
           {!isFirst && (
             <div className="mt-2 rounded-lg bg-gray-50 border border-gray-200 p-3 text-[13px] text-gray-700">
               <p className="leading-relaxed">
@@ -161,6 +187,7 @@ export default function ConfirmModal(props: ConfirmModalProps) {
             </div>
           )}
 
+          {/* エラー表示 */}
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm p-2">
               {error}
@@ -168,10 +195,10 @@ export default function ConfirmModal(props: ConfirmModalProps) {
           )}
         </div>
 
-        {/* フッター */}
+        {/* フッター：左端に横並び（戻る→送信→閉じる） */}
         <div className="px-5 py-4 border-t border-amber-100 flex items-center justify-start gap-3">
           <button className="rounded-xl border bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50" onClick={onBack} disabled={loading}>戻る</button>
-          <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
+          <button className="rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text白 shadow hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSubmit} disabled={loading}>
             {loading ? '送信中…' : '予約送信'}
           </button>
           <button className="rounded-xl bg-gray-200 px-4 py-2 text-sm text-gray-800 hover:bg-gray-300" onClick={onClose} disabled={loading}>閉じる</button>
