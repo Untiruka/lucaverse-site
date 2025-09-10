@@ -17,11 +17,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: '予約IDが必要' }, { status: 400 })
     }
 
-    // 数値IDならパース（DBがint想定の場合）
-    const reservationId = Number(id)
-    if (Number.isNaN(reservationId)) {
-      return NextResponse.json({ error: '予約IDが不正' }, { status: 400 })
-    }
+    // uuid前提なので Number() に変換しない
+    const reservationId = id
 
     // ★ここで毎回サーバ用クライアントを生成（トップレベルで作らない）
     const supabase = supabaseServer()
