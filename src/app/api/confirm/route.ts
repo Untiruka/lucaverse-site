@@ -35,10 +35,10 @@ export async function GET(req: Request) {
     })
 
     const { data, error } = await supabase
-      .from('reservation')
-      .update({ status: 'confirmed' })
-      .eq('id', id)
-      .select()
+  .from('reservation')
+  .update({ status: 'confirmed' })
+  .eq('id', id)
+  .select()
 
     if (error) {
       console.error('[confirm][update:error]', error)

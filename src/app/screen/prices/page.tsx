@@ -1,12 +1,3 @@
-// app/prices/page.tsx
-// ------------------------------------------------------
-// デザインだけ変更版（内容テキストは一切変更なし）
-// ・暖色グラデ背景（安心感）
-// ・カードUI（rounded / border / shadow）
-// ・見出しの視認性UP、余白・行間の最適化
-// ・既存リンク/文言/構造はそのまま維持
-// ------------------------------------------------------
-
 "use client"
 
 import MassageHeader from "../../components/MassageHeader"
@@ -14,21 +5,16 @@ import MassageFooter from "../../components/MassageFooter"
 
 export default function PricesPage() {
   return (
-    // ▼ 背景：柔らかい暖色グラデ（視認性＆清潔感）
     <div className="min-h-screen bg-gradient-to-b from-amber-50 via-white to-amber-50 text-gray-800 font-yusei">
-      {/* 共通ヘッダー */}
       <MassageHeader />
 
-      {/* ▼ メイン領域：余白強化＆幅広げ（読みやすさ優先） */}
       <main className="pt-24 pb-40 px-6 max-w-4xl mx-auto">
-        {/* ▼ 料金ボックス：既存内容をカード化（デザインのみ変更） */}
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-amber-100 shadow-md p-6 md:p-8 space-y-7 mt-8">
-          {/* タイトル（中央寄せ・視認性UP） */}
           <h2 className="text-3xl font-bold text-center tracking-wide">
             料金表
           </h2>
 
-          {/* 通常料金（セクション見出しの装飾のみ） */}
+          {/* 通常料金 */}
           <div>
             <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2">
               <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
@@ -36,12 +22,12 @@ export default function PricesPage() {
             </h3>
 
             <div className="grid md:grid-cols-2 gap-5">
-              {/* ▼ 既存1つ目のブロックをカード風に */}
+              {/* 30分 */}
               <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
                 <p className="font-semibold text-[20px] mb-2">ボディケア</p>
                 <p className="text-gray-600 text-[16px] mb-3 leading-relaxed">
                   指圧（しあつ）・ヘッドスパ・足裏マッサージ・ふくらはぎオイルマッサージ<br />
-                  <b>この中からお好みで組み合わせ</b>（予約時でもマッサージ中でもやってほしいことをお伝えしてくださいね！）
+                  <b>この中からお好みで組み合わせ</b>
                 </p>
                 <div className="flex items-center justify-between">
                   <span className="text-[16px] text-gray-600">30分</span>
@@ -49,21 +35,33 @@ export default function PricesPage() {
                 </div>
               </div>
 
-              {/* ▼ 既存2つ目のブロックをカード風に */}
+              {/* 60分 */}
               <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
                 <p className="font-semibold text-[20px] mb-2">全身リメディアル／オイル</p>
                 <p className="text-gray-600 text-[16px] mb-3 leading-relaxed">
-                  全身に対して深層筋までケア（リメディアル＝本格的な筋肉調整）＋オイル
+                  全身に対して深層筋までケア＋オイル
                 </p>
                 <div className="flex items-center justify-between">
                   <span className="text-[16px] text-gray-600">60分</span>
                   <span className="font-extrabold text-[28px] text-gray-900">9,000円</span>
                 </div>
               </div>
+
+              {/* ★ 追加：90分 */}
+              <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
+                <p className="font-semibold text-[20px] mb-2">全身リメディアル／オイル（ロング）</p>
+                <p className="text-gray-600 text-[16px] mb-3 leading-relaxed">
+                  じっくりほぐしたい方向けの90分ロングコース
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[16px] text-gray-600">90分</span>
+                  <span className="font-extrabold text-[28px] text-gray-900">12,000円</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 初回料金（色味だけグリーン寄せで差別化。文言はそのまま） */}
+          {/* 初回料金 */}
           <div>
             <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex items-center gap-2">
               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
@@ -71,7 +69,7 @@ export default function PricesPage() {
             </h3>
 
             <div className="grid md:grid-cols-2 gap-5">
-              {/* ▼ 既存1つ目 */}
+              {/* 30分 */}
               <div className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
                 <p className="font-semibold text-[20px] mb-2">ボディケア or 全身オイル</p>
                 <p className="text-gray-600 text-[16px] mb-3">内容は通常コースと同じです</p>
@@ -81,7 +79,7 @@ export default function PricesPage() {
                 </div>
               </div>
 
-              {/* ▼ 既存2つ目 */}
+              {/* 60分 */}
               <div className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
                 <p className="font-semibold text-[20px] mb-2">全身リメディアル／オイル</p>
                 <p className="text-gray-600 text-[16px] mb-3">全身オイルマッサージ（初回割引価格）</p>
@@ -90,19 +88,27 @@ export default function PricesPage() {
                   <span className="font-extrabold text-[28px] text-emerald-700">4,000円</span>
                 </div>
               </div>
+
+              {/* ★ 追加：90分 */}
+              <div className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
+                <p className="font-semibold text-[20px] mb-2">全身リメディアル／オイル（ロング）</p>
+                <p className="text-gray-600 text-[16px] mb-3">初回限定の90分ロングコース</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[16px] text-gray-600">90分</span>
+                  <span className="font-extrabold text-[28px] text-emerald-700">7,000円</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 注意テキスト（既存文言そのまま／見た目だけ整形） */}
+          {/* 注意テキスト */}
           <div className="text-gray-700 text-sm mt-2 bg-amber-50 border border-amber-100 rounded-xl p-4">
             <span className="text-red-600 font-semibold block">※現在60分以上のコースは受付停止中</span>
             <span>短時間でもしっかり成果を出します。</span>
           </div>
         </div>
+      </main>
 
-    
-      </main>　　
-      {/* 共通フッター */}
       <MassageFooter />
     </div>
   )
