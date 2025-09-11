@@ -103,8 +103,8 @@ export default function PricesPage() {
 
           {/* 注意テキスト */}
           <div className="text-gray-700 text-sm mt-2 bg-amber-50 border border-amber-100 rounded-xl p-4">
-            <span className="text-red-600 font-semibold block">※現在60分以上のコースは受付停止中</span>
-            <span>短時間でもしっかり成果を出します。</span>
+            <span className="text-red-600 font-semibold block">※現在90分以上のコースは受付停止中</span>
+            <span>90分以内でもがっつり成果出します。</span>
           </div>
         </div>
       </main>
