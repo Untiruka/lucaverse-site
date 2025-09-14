@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
           overrides: [{ method: 'popup', minutes: 30 }],
         },
         // 予約の識別用（あとで消したい時に使える）
-        source: { title: 'Lucaverse Reservations', url: 'https://your-site.example.com' },
+        source: { title: 'Lucaverse Reservations', url: 'https://lucaverce.com/screen/home' },
       },
     })
 
