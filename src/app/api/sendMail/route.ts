@@ -168,12 +168,8 @@ export async function POST(req: Request) {
           <br/>
           ▼店舗地図<br/>
           <a href="${mapUrl}" target="_blank" rel="noreferrer">Googleマップで開く</a><br/>
-          <br/>
-          ▼ご予約のキャンセルはこちらから<br/>
-          <a href="${cancelUrl}">予約キャンセルフォーム</a><br/>
-          <br/>
-          ※このメールは自動送信です。返信不要です。<br/>
-          変更・キャンセルは必ず上記リンクからお願いします。<br/>
+          
+          変更・キャンセルの場合はいつでも教えてくださいね。<br/>
         </div>
       `,
     })
