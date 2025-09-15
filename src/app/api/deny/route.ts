@@ -1,9 +1,10 @@
 // /src/app/api/deny/route.ts
 // ------------------------------------------------------
-// 予約拒否API（Deny）
-// ・メール内リンクの GET /api/deny?id=... に対応
+// 予約拒否API（Deny）デバッグ版（console.log大量）
+// ・メール内リンク: GET /api/deny?id=RESERVATION_ID
 // ・DB: 'denied' に更新
-// ・ユーザーへ「その時間はすでに予約枠です」文面で送信
+// ・ユーザーへ専用文面送信
+//    「ご希望の 日付 時刻 はすでに予約枠が埋まっております。」
 // ------------------------------------------------------
 
 export const runtime = 'nodejs'
@@ -14,7 +15,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const EMAIL_FROM = process.env.EMAIL_FROM || '施術屋 Luca <onboarding@resend.dev>'
+const EMAIL_FROM = process.env.EMAIL_FROM // 推奨: 検証済み送信元
 
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string
@@ -25,57 +26,80 @@ function sb() {
 export async function GET(req: Request) {
   try {
     const id = (new URL(req.url).searchParams.get('id') || '').trim()
-    if (!id) return NextResponse.json({ error: '予約IDが必要' }, { status: 400 })
+    console.log('[deny][GET] hit', { id })
+
+    console.log('[deny] ENV check', {
+      RESEND_API_KEY: !!RESEND_API_KEY,
+      EMAIL_FROM: !!EMAIL_FROM,
+      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    })
+
+    if (!id) {
+      console.error('[deny] ERROR no id')
+      return NextResponse.json({ error: '予約IDが必要' }, { status: 400 })
+    }
 
     const client = sb()
-    // 1) 予約取得（メール文面に必要）
+
+    // 1) 予約取得
+    console.log('[deny] fetch reservation...')
     const { data: rows, error: fetchErr } = await client
-      .from('reservations') // ※ 複数形
+      .from('reservations')
       .select('*')
       .eq('id', id)
       .limit(1)
-
+    console.log('[deny] fetch result', { count: rows?.length ?? 0, fetchErr })
     if (fetchErr) return NextResponse.json({ error: `fetch_failed:${fetchErr.message}` }, { status: 500 })
     if (!rows?.length) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
     const r = rows[0] as {
-      id: string; name: string; email: string | null; date: string; start_time: string; course: string
+      id: string; name: string; email: string | null; date: string; start_time: string; course: string; status: string
     }
+    console.log('[deny] reservation row', { id: r.id, status: r.status, email: r.email })
 
-    // 2) 状態更新（denied）
+    // 2) 更新（denied）
+    console.log('[deny] update status -> denied')
     const { error: updErr } = await client
       .from('reservations')
       .update({ status: 'denied' })
       .eq('id', id)
+    console.log('[deny] update result', { updErr })
     if (updErr) return NextResponse.json({ error: `update_failed:${updErr.message}` }, { status: 500 })
 
     // 3) ユーザーへ拒否メール（専用文面）
-    if (RESEND_API_KEY && r.email) {
+    if (RESEND_API_KEY && EMAIL_FROM && r.email) {
+      console.log('[deny] sending user deny email...')
       const resend = new Resend(RESEND_API_KEY)
       const text = [
         `${r.name} 様`,
         '',
         'この度はご予約ありがとうございました。',
         '大変恐れ入りますが、',
-        `ご希望の ${r.date} ${r.start_time} はすでに予約枠が埋まっております。`, // ★ご指定文言
+        `ご希望の ${r.date} ${r.start_time} はすでに予約枠が埋まっております。`,
         '別の日時でのご予約をご検討いただけますと幸いです。',
         '',
         '※このメールは自動送信です。返信不要です。',
       ].join('\n')
 
-      await resend.emails.send({
+      const userRes = await resend.emails.send({
         from: EMAIL_FROM,
         to: r.email,
         subject: '【Luca】ご予約の承認が見送りとなりました',
         text,
       })
+      console.log('[deny] user email result', { data: userRes?.data, error: userRes?.error })
+    } else {
+      console.warn('[deny] user email skipped', { hasApiKey: !!RESEND_API_KEY, hasFrom: !!EMAIL_FROM, hasUserEmail: !!r.email })
     }
 
+    console.log('[deny] DONE')
     return new Response('<html><body>予約を拒否しました。</body></html>', {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'internal error'
+    console.error('[deny][GET] ERROR', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
