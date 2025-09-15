@@ -12,10 +12,12 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+// ★ 型は type でimport（型だけ拾う最適解）
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { google } from 'googleapis'
 import { Resend } from 'resend'
 
+// ====== 型定義 ======
 type ConfirmBody = { reservationId: string }
 type ReservationRow = {
   id: string
@@ -29,27 +31,35 @@ type ReservationRow = {
   email: string | null
 }
 
+// ====== ENV（メール/カレンダー） ======
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const EMAIL_FROM = process.env.EMAIL_FROM || '施術屋 Luca <onboarding@resend.dev>'
 const EMAIL_TO_ADMIN = process.env.EMAIL_TO_ADMIN || 'lucaverce_massage@yahoo.co.jp'
-const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID
+const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary' // （補足）未設定ならprimaryを使う
 
+// ====== ENV（DB）—— 単数テーブルが正やからデフォは 'reservation' ======
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string
+const RESERVATION_TABLE = process.env.RESERVATION_TABLE || 'reservation' // ← ★ここがキモ
+
+// ====== Supabase（サーバ用・サービスロール） ======
 function sb(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string
-  return createClient(url, serviceKey, { auth: { persistSession: false } })
+  // （補足）auth.persistSession:false：サーバでセッション保持しない（安全）
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 }
 
+// ====== Google OAuth2（Refresh Token 方式） ======
 function googleAuth() {
   const client = new google.auth.OAuth2({
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri: 'urn:ietf:wg:oauth:2.0:oob',
+    redirectUri: 'urn:ietf:wg:oauth:2.0:oob', // 今回未使用
   })
   client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
   return client
 }
 
+// ====== JST 'YYYY-MM-DD' + 'HH:MM' → RFC3339（JST固定） ======
 function toJst(date: string, hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
   const d = new Date(`${date}T00:00:00+09:00`)
@@ -57,6 +67,7 @@ function toJst(date: string, hhmm: string): string {
   return d.toISOString().replace('Z', '+09:00')
 }
 
+// ====== メール本文 ======
 function userConfirmText(r: ReservationRow) {
   return [
     'Lucaをご予約いただきありがとうございます。',
@@ -89,15 +100,16 @@ function adminConfirmText(r: ReservationRow) {
   ].filter(Boolean).join('\n')
 }
 
+// ====== 共通処理：idで確定＋メール送信 ======
 async function confirmById(reservationId: string) {
-  console.log('[confirm] START', { reservationId })
+  console.log('[confirm] START', { reservationId, table: RESERVATION_TABLE })
   console.log('[confirm] ENV', {
     RESEND_API_KEY: !!RESEND_API_KEY,
     EMAIL_FROM: !!EMAIL_FROM,
     EMAIL_TO_ADMIN: !!EMAIL_TO_ADMIN,
     GOOGLE_CALENDAR_ID: !!GOOGLE_CALENDAR_ID,
-    NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    NEXT_PUBLIC_SUPABASE_URL: !!SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: !!SUPABASE_SERVICE_ROLE_KEY,
   })
 
   if (!reservationId) throw new Error('reservationId required')
@@ -105,9 +117,9 @@ async function confirmById(reservationId: string) {
 
   const client = sb()
 
-  // 1) 取得
+  // 1) 取得（★テーブル名はENVのRESERVATION_TABLE）
   const { data: rows, error: fetchErr } = await client
-    .from('reservations')
+    .from(RESERVATION_TABLE)
     .select('*')
     .eq('id', reservationId)
     .limit(1)
@@ -119,23 +131,32 @@ async function confirmById(reservationId: string) {
   console.log('[confirm] row', { id: r.id, status: r.status, email: r.email })
   if (r.status !== 'pending') throw new Error(`invalid_status:${r.status}`)
 
-  // 2) 更新
+  // 2) 更新（confirmed）
   const { error: updErr } = await client
-    .from('reservations')
+    .from(RESERVATION_TABLE)
     .update({ status: 'confirmed' })
     .eq('id', reservationId)
   console.log('[confirm] update', { updErr })
   if (updErr) throw new Error(`update_failed:${updErr.message}`)
 
-  // 3) カレンダー
+  // 3) カレンダー登録
   const calendar = google.calendar({ version: 'v3', auth: googleAuth() })
   const insertRes = await calendar.events.insert({
-    calendarId: GOOGLE_CALENDAR_ID,
+    calendarId: GOOGLE_CALENDAR_ID, // （用語）カレンダーID（primaryでもOK）
     requestBody: {
       summary: `${r.name} / ${r.course}`,
-      description: [`■ お名前: ${r.name}`, r.tel ? `■ 電話: ${r.tel}` : '', r.email ? `■ メール: ${r.email}` : ''].filter(Boolean).join('\n'),
+      description: [
+        `■ お名前: ${r.name}`,
+        r.tel ? `■ 電話: ${r.tel}` : '',
+        r.email ? `■ メール: ${r.email}` : '',
+        `■ コース: ${r.course}`,
+        `■ 日付: ${r.date}`,
+        `■ 時間: ${r.start_time} 〜 ${r.end_time}`,
+      ].filter(Boolean).join('\n'),
       start: { dateTime: toJst(r.date, r.start_time), timeZone: 'Asia/Tokyo' },
       end:   { dateTime: toJst(r.date, r.end_time),   timeZone: 'Asia/Tokyo' },
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
+      source: { title: 'Lucaverse Reservations', url: 'https://lucaverce.com/screen/home' },
     },
   })
   console.log('[confirm] calendar', { eventId: insertRes.data.id })
@@ -166,13 +187,15 @@ async function confirmById(reservationId: string) {
   console.log('[confirm] DONE')
 }
 
-// GET（メール内リンク）
+// ====== GET（メール内リンク） ======
 export async function GET(req: NextRequest) {
   try {
     const id = new URL(req.url).searchParams.get('id') || ''
     console.log('[confirm][GET] hit', { id })
     await confirmById(id)
-    return new Response('<html><body>予約を承認しました。</body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    return new Response('<html><body>予約を承認しました。</body></html>', {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'internal error'
     console.error('[confirm][GET] ERROR', msg)
@@ -180,7 +203,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST（管理UI）
+// ====== POST（管理UI） ======
 export async function POST(req: NextRequest) {
   try {
     const { reservationId } = (await req.json()) as ConfirmBody
