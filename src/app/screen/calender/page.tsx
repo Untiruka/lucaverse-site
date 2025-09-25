@@ -1,15 +1,14 @@
-// app/screen/calender/page.tsx
 // ------------------------------------------------------
-// Server薄ラッパ：ここでは 'use client' を付けない＆Supabaseを触らない
-// SSG/prerenderを明示停止して、ビルド時評価を避ける
+// Server薄ラッパ：ここでは 'use client' は付けない（重要）
+// ここで Supabase を触らないことで、SSG/SSR 時の実行を避ける
 // ------------------------------------------------------
-"use client";  // ★これを最上部に追加
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic'   // （動的扱い）
+export const revalidate = 0              // （キャッシュ無効）
 
 import ClientCalender from './ClientCalender'
 
 export default function Page() {
-  // 注意：Supabaseやwindow/document等はここで触らないこと！
+  // ※ ブラウザ限定の処理は全部 ClientCalender 側に寄せる
   return <ClientCalender />
 }

@@ -1,13 +1,11 @@
 'use client'
 
-
-// ※ デバッグ専用：一時的に入れて確認したら消してOK
-console.log('[ENVCHK] URL present =', typeof process.env.NEXT_PUBLIC_SUPABASE_URL !== 'undefined')
-console.log('[ENVCHK] KEY present =', typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'undefined')
-// 先頭12文字だけ表示してマスク（流出防止）
-if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  console.log('[ENVCHK] URL(head12)=', process.env.NEXT_PUBLIC_SUPABASE_URL.slice(0,12) + '…')
-}
+// ------------------------------------------------------
+// 目的：Supabaseブラウザクライアントを「クライアントで描画開始後」に安全初期化
+// ポイント：getSupabaseBrowser() は useEffect で setState 経由で保持する
+//   - これでビルド時の静的プレレンダー中に呼ばれない
+//   - 参照前には null ガードを入れて操作を抑止
+// ------------------------------------------------------
 
 import { useMemo, useState, useEffect } from "react"
 import ConfirmModal from "@/src/app/components/ConfirmModal"
@@ -18,10 +16,14 @@ import ReserveForm from "@/src/app/components/ReserveForm"
 import { getSupabaseBrowser } from '@/lib/supabaseClient'
 import type { ReserveInfo } from "@/src/app/components/ReserveForm"
 
+// ---------- 型定義（any禁止） ----------
 type AvailabilityStatus = "open" | "full" | "closed"
 type AvailabilityMap = Record<string, AvailabilityStatus>
 type FormValues = { name: string; tel: string; email: string; coupon1?: string }
+// getSupabaseBrowser() の戻り型を安全に推論
+type SupaClient = ReturnType<typeof getSupabaseBrowser>
 
+// ---------- ダミー在庫 ----------
 const availability: AvailabilityMap = {
   "2025-09-25": "open",
   "2025-09-26": "full",
@@ -29,9 +31,17 @@ const availability: AvailabilityMap = {
 }
 
 export default function ClientCalender() {
-  // ✅ ここで初期化（useMemo内に移動）
-  const supabase = useMemo(() => getSupabaseBrowser(), [])
+  // --------------------------------------------------
+  // Supabase は「描画後」に初期化（SSR/SSG中に実行させない）
+  // --------------------------------------------------
+  const [supabase, setSupabase] = useState<SupaClient | null>(null)
 
+  useEffect(() => {
+    // ※ ブラウザ上でのみ実行される
+    setSupabase(getSupabaseBrowser())
+  }, [])
+
+  // ---------- UI状態 ----------
   const [modalDate, setModalDate] = useState<string | null>(null)
   const [reserveInfo, setReserveInfo] = useState<ReserveInfo | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -46,6 +56,7 @@ export default function ClientCalender() {
     setIsFirst(null)
   }
 
+  // ---------- スクロールバー非表示（装飾） ----------
   useEffect(() => {
     const style = document.createElement("style")
     style.innerHTML = `
@@ -56,7 +67,7 @@ export default function ClientCalender() {
     return () => { document.head.removeChild(style) }
   }, [])
 
-  // 以降のUI部分は元コードと同じ --------------------------
+  // ---------- 表示 ----------
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-conti antialiased">
       <MassageHeader />
@@ -75,10 +86,17 @@ export default function ClientCalender() {
             />
           </div>
         </div>
+
+        {/* ▼ Supabase未初期化中は注意表示（操作抑止のため） */}
+        {!supabase && (
+          <p className="mt-4 text-sm text-gray-400">
+            読み込み中です…（数秒後に予約フォームが使えます）
+          </p>
+        )}
       </main>
       <MassageFooter />
 
-      {/* 以下モーダル処理は元コードと同じ */}
+      {/* 日付選択モーダル */}
       {modalDate && !reserveInfo && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4">
@@ -94,12 +112,19 @@ export default function ClientCalender() {
         </div>
       )}
 
+      {/* 予約フォーム */}
       {reserveInfo && !confirming && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4 p-4 md:p-5">
             <ReserveForm
               info={reserveInfo}
               onNext={async (values: FormValues) => {
+                // ------------------------------
+                // ★ Supabase 初期化前は無視して安全化
+                // ------------------------------
+                if (!supabase) return
+
+                // 既存顧客かチェック
                 const { data: prev } = await supabase
                   .from("reservation")
                   .select("id")
@@ -108,6 +133,8 @@ export default function ClientCalender() {
                   .limit(1)
 
                 const firstTime = !prev || prev.length === 0
+
+                // クーポン検証
                 let validCouponDiscount = 0
                 let usedCouponCode = ""
                 if (values.coupon1) {
@@ -125,15 +152,25 @@ export default function ClientCalender() {
                     usedCouponCode = values.coupon1
                   }
                 }
+
+                // 価格計算
                 let finalPrice = reserveInfo.basePrice
                 if (firstTime && reserveInfo.firstPrice) finalPrice = reserveInfo.firstPrice
                 if (validCouponDiscount) finalPrice = Math.max(finalPrice - validCouponDiscount, 0)
-                setReserveInfo({ ...reserveInfo, finalPrice, couponDiscount: validCouponDiscount, couponCode: usedCouponCode })
+
+                setReserveInfo({
+                  ...reserveInfo,
+                  finalPrice,
+                  couponDiscount: validCouponDiscount,
+                  couponCode: usedCouponCode,
+                })
                 setFormValues(values)
                 setIsFirst(firstTime)
                 setConfirming(true)
               }}
               onClose={closeAll}
+              // ※ supabaseが用意できるまで送信ボタンを実質無効化するなら、
+              //   ReserveForm側のpropsに disabled 等を渡して制御するのもアリ
             />
             <div className="mt-3 flex justify-end">
               <button
@@ -147,6 +184,7 @@ export default function ClientCalender() {
         </div>
       )}
 
+      {/* 確認モーダル */}
       {reserveInfo && confirming && formValues && isFirst !== null && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4">
@@ -169,13 +207,10 @@ export default function ClientCalender() {
   )
 }
 
-// HorizontalCalendar 以下は元のまま
-
-
 /* ======================================================
    横スク3ヶ月カレンダー（元UIそのまま）
    - 見切れ対策：親に px、子幅 w-[min(560px,calc(100vw-2rem))]
-   - セル：min-w-[44px], h-12(md:h-14), 左上=日付丸 / 右下=ステータス
+   - セル：min-w-[44px], h-12(md:h-14), 右下=ステータス
    - 無効条件：過去日 or full/closed → 黒半透明で無効化
    ====================================================== */
 type CalProps = {
@@ -187,7 +222,6 @@ type CalProps = {
 function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: CalProps) {
   const today = useMemo(() => {
     const t = new Date()
-    // 当日0:00固定（過去判定のズレ防止）
     t.setHours(0, 0, 0, 0)
     return t
   }, [])
@@ -202,7 +236,6 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
 
   const weekNames = ["日", "月", "火", "水", "木", "金", "土"]
 
-  // YYYY-MM-DD（ゼロ埋めISO）
   const toISO = (d: Date) => {
     const y = d.getFullYear()
     const m = `${d.getMonth() + 1}`.padStart(2, "0")
@@ -214,20 +247,18 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
     const st = availability[iso]
     if (st === "open") return "😊"
     if (st === "full" || st === "closed") return "✖"
-    return "" // 未設定は非表示でスッキリ
+    return ""
   }
 
   return (
     <div className="overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-pl-4 md:scroll-pl-6 px-4 md:px-6 py-3">
       <div className="flex gap-4 md:gap-6">
         {monthBlocks.map((firstDay, idx) => {
-          // 月の開始/終了
           const year = firstDay.getFullYear()
           const month = firstDay.getMonth()
           const monthStart = new Date(year, month, 1)
           const monthEnd = new Date(year, month + 1, 0)
 
-          // 表示範囲を週単位に拡げる
           const gridStart = new Date(monthStart)
           gridStart.setDate(gridStart.getDate() - gridStart.getDay())
           gridStart.setHours(0, 0, 0, 0)
@@ -235,19 +266,13 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
           gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()))
           gridEnd.setHours(0, 0, 0, 0)
 
-          // 日配列
           const days: Date[] = []
           for (let d = new Date(gridStart); d <= gridEnd; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
             days.push(d)
           }
 
           return (
-            <section
-              key={idx}
-              className="snap-start shrink-0 w-[min(560px,calc(100vw-2rem))]"
-              // ↑ 子幅：ビューポートの左右余白ぶん差し引き（見切れ防止）
-            >
-              {/* 月タイトル */}
+            <section key={idx} className="snap-start shrink-0 w-[min(560px,calc(100vw-2rem))]">
               <div className="px-1 md:px-2 mb-2 flex items-baseline justify-between">
                 <h2 className="text-lg md:text-xl font-bold">
                   {year}年{month + 1}月
@@ -255,14 +280,12 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
                 <span className="text-xs text-gray-500">（横にスワイプ）</span>
               </div>
 
-              {/* 曜日ヘッダ */}
               <div className="grid grid-cols-7 text-center text-[11px] md:text-xs text-gray-500 mb-1">
                 {weekNames.map((w) => (
                   <div key={w} className="py-1">{w}</div>
                 ))}
               </div>
 
-              {/* 月グリッド */}
               <div className="grid grid-cols-7 gap-1 md:gap-2">
                 {days.map((d) => {
                   const iso = toISO(d)
@@ -274,7 +297,6 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
                   const st = availability[iso]
                   const icon = getIcon(iso)
 
-                  // ▼ 無効条件：過去 or 満/休
                   const isPast = d < today
                   const isDisabled = isPast || st === "full" || st === "closed"
 
@@ -292,7 +314,6 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
                         if (!isDisabled && inThisMonth) onSelectDate(iso)
                       }}
                     >
-                      {/* 日付バッジ（SP:日 / md+: 月/日） */}
                       <span className="absolute left-1 top-1 md:left-2 md:top-2">
                         <span className="inline-flex items-center justify-center rounded-full bg-gray-100 text-gray-700 h-5 min-w-5 px-1 md:h-6 md:min-w-6 md:px-2 text-[10px] md:text-[11px]">
                           <span className="md:hidden">{d.getDate()}</span>
@@ -302,14 +323,12 @@ function HorizontalCalendar({ months = 3, onSelectDate, availability = {} }: Cal
                         </span>
                       </span>
 
-                      {/* ステータス（右下・1文字固定） */}
                       {icon && (
                         <span className="absolute right-1 bottom-1 md:right-2 md:bottom-2 text-base md:text-lg leading-none">
                           {icon}
                         </span>
                       )}
 
-                      {/* ▼ 黒塗りオーバーレイ（過去/満了/休） */}
                       {isDisabled && <span className="absolute inset-0 bg-black/55" />}
                     </div>
                   )
