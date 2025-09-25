@@ -11,6 +11,8 @@ module.exports = {
         hepta: ['var(--font-hepta)', 'serif'],
         geist: ['var(--font-geist-sans)', 'sans-serif'],
         geistmono: ['var(--font-geist-mono)', 'monospace'],
+                conti: ['var(--font-conti)', 'monospace'],
+
       },
     },
   },

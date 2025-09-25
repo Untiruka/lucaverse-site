@@ -1,18 +1,19 @@
+
 'use client' // ← Client Component は必ず先頭
 
-/* DayModal（90分コース追加＆前後バッファ対応）
+/* DayModal（15分刻み＆〜23:00営業に拡張）
   - 仕様：
     ① 当日だけ「現時点から+60分」未満の枠は選べない（現在バッファ）
-    ② 予約が入ってる時間は「開始30分前〜施術時間＋30分後」を30分刻みでブロック（施術バッファ）
-       ※ course 不明は本体60分＋前後30分（= 合計120分相当を30分刻み）で保険
+    ② 予約が入ってる時間は「開始15〜30分前〜施術時間＋15〜30分後」を15分刻みでブロック
+       ※ PRE/POST バッファは30分だが、丸めは15分刻み
     ③ コース：30/60/90分（UIタブ）
-       - 90分は 15:30 が最終開始（17:00 close）
+       - 最終終了が 23:00 になるように自動制限（例：90分なら最終開始 21:30）
   - デザイン：
     暖色カードUI、コースタブ、凡例、押しやすい枠ボタン
 */
 
 import { useState, useEffect } from 'react'
-import { getSupabaseBrowser } from '@/lib/supabaseClient' // ← 遅延生成版を使う（ビルド時実行を避ける）
+import { getSupabaseBrowser } from '@/lib/supabaseClient' // （Supabase：ブラウザ用遅延生成）
 import type { ReserveInfo } from '@/src/app/components/ReserveForm'
 
 type Props = {
@@ -36,21 +37,29 @@ function courseToMinutes(course: string): number {
   return Number.isFinite(m) && m > 0 ? m : 30
 }
 
-/* スロット生成（10:00〜17:00 close／30分刻み。開始＋dur が 17:00 を超えるものは除外） */
+/* 営業時間パラメータ（ここを変えれば運用調整が楽） */
+const START_HOUR = 10          // （開始時刻：10:00）
+const END_HOUR = 23            // （終了時刻：23:00 ちょうどに営業終了）
+const STEP_MIN = 15            // （スロット間隔：15分）
+
+/* スロット生成（10:00〜23:00 終了制約／15分刻み。開始＋dur が 23:00 を超えるものは除外） */
 const generateSlots = (course: string): string[] => {
-  // ※ コメント：dur（施術時間）に応じて最終開始は自動で狭まる（90分なら 15:30 が上限）
-  const dur = courseToMinutes(course) // 30 / 60 / 90...
+  const dur = courseToMinutes(course)       // （dur：施術時間）
+  const END_MIN = END_HOUR * 60             // （例：23:00 → 1380分）
   const slots: string[] = []
 
-  // 10:00 〜 16:30 まで30分刻みで仮作成
-  for (let h = 10; h <= 16; h++) {
-    const hh = String(h).padStart(2, '0')
-    slots.push(`${hh}:00`)
-    slots.push(`${hh}:30`)
+  // 例：10:00〜22:59 まで15分刻みの開始候補を作る（終了チェックは後でフィルタ）
+  for (let h = START_HOUR; h < END_HOUR; h++) {
+    for (let m = 0; m < 60; m += STEP_MIN) {
+      const hh = String(h).padStart(2, '0')
+      const mm = String(m).padStart(2, '0')
+      slots.push(`${hh}:${mm}`)
+    }
   }
+  // 必要なら 23:00 ちょうど開始も候補に入れるが、dur>0 のため最終的には除外される
+  // slots.push('23:00')
 
-  // 営業終了 17:00（= 1020分）
-  const END_MIN = 17 * 60
+  // 「開始＋施術時間」が 23:00 を超える開始候補は除外
   return slots.filter((t) => {
     const [h, m] = t.split(':').map(Number)
     const startMin = h * 60 + m
@@ -64,15 +73,15 @@ const toMinutes = (hhmm: string): number => {
   return h * 60 + m
 }
 
-/* 分数→"HH:MM"（30分刻み固定表示） */
+/* 分数→"HH:MM"（15分刻みをそのまま表示） */
 const toHHMM = (mins: number): string => {
   const h = Math.floor(mins / 60)
   const m = mins % 60
-  return `${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-/* 30分刻みに切り下げ（617→600=10:00） */
-const snap30 = (mins: number): number => Math.floor(mins / 30) * 30
+/* 15分刻みに切り下げ（例：617→615=10:15） */
+const snap15 = (mins: number): number => Math.floor(mins / STEP_MIN) * STEP_MIN
 
 // Supabaseの行型（string化＆null対応／any禁止）
 type ReservationRow = {
@@ -81,14 +90,14 @@ type ReservationRow = {
 }
 
 export default function DayModal({ date, onClose, onReserve }: Props) {
-  // コメント: Supabase クライアントは「呼ばれた時だけ」生成（SSR/prerender の巻き込み回避）
+  // （Supabase：呼ばれた時だけ生成）
   const supabase = getSupabaseBrowser()
 
   // コース料金（UI表示用）
   const priceTable = {
     '30min': { normal: 5000, first: 3000 },
     '60min': { normal: 9000, first: 4000 },
-    '90min': { normal: 12000, first: 7000 }, // ★ 追加
+    '90min': { normal: 12000, first: 7000 },
   } as const
   type CourseKey = keyof typeof priceTable
 
@@ -96,14 +105,13 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
   const [reservedSlots, setReservedSlots] = useState<string[]>([]) // 施術＋前後バッファ反映後の埋まり枠
   const [slot, setSlot] = useState<string>('')
 
-  // ★ 前後バッファ（分）を定数化（読みやすさ＆変更容易性）
-  const PRE_BUFFER_MIN = 30   // 予約開始「前」30分をブロック（器材準備・前後入替など）
-  const POST_BUFFER_MIN = 30  // 予約終了「後」30分をブロック（片付け・入替）
+  // 前後バッファ（分）
+  const PRE_BUFFER_MIN = 30   // （開始前の準備時間）
+  const POST_BUFFER_MIN = 30  // （終了後の片付け時間）
 
-  /* 予約取得 → 「開始30分前〜施術＋30分後」を30分刻みでブロック */
+  /* 予約取得 → 「開始-30分〜施術＋30分後」を15分刻みでブロック */
   useEffect(() => {
     const fetchReserved = async (): Promise<void> => {
-      // ※ status = confirmed のみを対象（pending は未確定扱い）
       const { data, error } = await supabase
         .from('reservation')
         .select('start_time, course')
@@ -119,19 +127,19 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
       const blocked = new Set<string>()
 
       ;(data as ReservationRow[] | null ?? []).forEach((r: ReservationRow) => {
-        // ▼ 予約開始 "HH:MM"
+        // 予約開始 "HH:MM"
         const startHHMM = String(r.start_time).slice(0, 5)
         const start = toMinutes(startHHMM)
 
-        // ▼ 施術時間（未設定は 60 分で保険）
+        // 施術時間（未設定は 60 分で保険）
         const dur = r.course ? courseToMinutes(r.course) : 60
 
-        // ▼ ブロック範囲：開始30分前 〜 終了＋30分後
-        //    - 30分刻みに丸めて、両端含めて列挙
-        const blockStart = snap30(start - PRE_BUFFER_MIN)                 // ← ここを「開始−30分」に変更
-        const blockEnd   = snap30(start + dur + POST_BUFFER_MIN)          // ← 終了＋30分
-        for (let t = blockStart; t <= blockEnd; t += 30) {
-          blocked.add(toHHMM(t))
+        // ブロック範囲：開始30分前 〜 終了＋30分後（両端含む）
+        const blockStart = snap15(start - PRE_BUFFER_MIN)
+        const blockEnd   = snap15(start + dur + POST_BUFFER_MIN)
+
+        for (let t = blockStart; t <= blockEnd; t += STEP_MIN) {
+          blocked.add(toHHMM(t)) // ← 15分刻みで "HH:MM" を生成
         }
       })
 
@@ -151,7 +159,7 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-3">
-      <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-white shadow-2xl">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-amber-100 bg-white shadow-2xl">
         {/* ヘッダー */}
         <div className="flex items-start justify-between border-b border-amber-100 px-5 py-4">
           <div className="space-y-0.5">
@@ -213,7 +221,7 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
 
           <div className="grid grid-cols-3 gap-2">
             {slots.map((t) => {
-              const isReserved = reservedSlots.includes(t) // ← 施術＋前後バッファを含む埋まり枠
+              const isReserved = reservedSlots.includes(t) // （施術＋前後バッファを含む埋まり枠）
               const isSelected = slot === t
 
               // この日の t 時刻の Date
@@ -270,7 +278,7 @@ export default function DayModal({ date, onClose, onReserve }: Props) {
             onClick={() =>
               onReserve({
                 date,
-                course, // ← string（'30min' | '60min' | '90min'）
+                course, // （'30min' | '60min' | '90min'）
                 slot,
                 basePrice: priceTable[course].normal,
                 firstPrice: priceTable[course].first,

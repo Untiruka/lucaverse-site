@@ -1,22 +1,16 @@
-/* ✅ フォントを一番最初に import */
+/* ★ フォント最初に読み込み（Google Fonts） */
 @import url('https://fonts.googleapis.com/css2?family=Hepta+Slab&family=Yusei+Magic&display=swap');
 
-/* ✅ Tailwind 全体読み込み（PostCSS構成） */
+/* ★ Tailwind（PostCSS構成） */
 @import "tailwindcss";
 
-/* ✅ CSS変数・テーマ定義 */
+/* =========================
+   基本テーマ（背景/前景色）
+   ========================= */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -24,18 +18,207 @@
   }
 }
 
-/* ✅ 基本bodyスタイル（上書きしてOK） */
+/* ★ Tailwind の theme 連携（任意） */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* =========================
+   既存スタイル（ベース）
+   ========================= */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: contain; /* ← （iOSの引っ張り）画面ズレ防止 */
+}
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: 'Yusei Magic', Arial, Helvetica, sans-serif;
 }
+.font-yusei { font-family: 'Yusei Magic', sans-serif; }
+.font-hepta { font-family: 'Hepta Slab', serif; }
 
-/* ✅ Tailwindで使えるようにするフォントクラス（必要なら） */
-.font-yusei {
-  font-family: 'Yusei Magic', sans-serif;
+/* ★ アップしたピクセルフォント */
+@font-face {
+  font-family: 'ContiNeue2P';
+  src: url('/fonts/ContiNeue2P-1.0.1.otf') format('opentype');
+  font-display: swap; /* （フォント読み込み中でも先に表示） */
+}
+.font-conti { font-family: 'ContiNeue2P', monospace; }
+
+
+/* -------------------------------------------
+   HPバーを main 内で絶対配置してフローから外す
+   - pointer-events: none で下のUI操作を邪魔しない
+   - 子要素側で pointer を戻してボタン等は押せる
+-------------------------------------------- */
+.hpbar-wrap {
+  position: absolute;                 /* ★ main 相対で固定 */
+  top: var(--hp-top, 10px);           /* （調整用カスタムプロパティ） */
+  left: var(--hp-left, 16px);
+  right: var(--hp-right, 16px);
+  height: var(--hp-height, 16px);
+  z-index: 700;                       /* 吹き出し(600)より上 */
+  pointer-events: none;               /* 下のクリックを邪魔しない */
+}
+.hpbar-wrap > * {
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;               /* バー内の操作が必要なら有効化 */
+}
+.bg-img {
+  object-fit: cover;            /* ← これを追加（img用） */
+}
+/* -------------------------------------------
+   シーンの高さを main の 100% にカチッと合わせる
+-------------------------------------------- */
+.scene-root {
+  position: relative;   /* （必要ならオーバーレイ基準） */
+  width: 100%;
+  height: 100%;         /* ★ これで PixelMassageScene を溢れさせない */
+  overflow: hidden;     /* 念のための保険 */
 }
 
-.font-hepta {
-  font-family: 'Hepta Slab', serif;
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+.bg-img {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1s ease-in-out; /* ★フェード */
+}
+.bg-top {
+  opacity: 1;
+}
+
+/* === PCデフォルト（≥769px） ===================== */
+:root {
+  /* 背景とHPバーなど（既存流用） */
+  --scene-bg: url("/image/ComfyUI_00018_.webp");
+  --hp-left: 16px;
+  --hp-right: 16px;
+  --hp-top: 100px;
+  --hp-height: 18px;
+
+  /* 画面端の見切れ対策（必要に応じて調整） */
+  --clip-inset: 0 100px 0 100px;
+
+  /* 台詞ごとの微調整“つまみ”（要素個別で style="--dx: 2vw" などを足す） */
+  --dx: 0vw; /* （vw：横方向微調整） */
+  --dy: 0vh; /* （vh：縦方向微調整） */
+
+  /* ★ 全体横バイアス（幅で右寄りになりがち対策。PCは基本0） */
+  --x-bias: 0vw;
+
+  /* ★ セラピスト位置（中央基準＋オフセット＋全体補正） */
+  /*    - さらに中央寄り → +6vw を小さく（例：+4vw）
+        - さらに上        → -22vh をもっとマイナス（例：-26vh） */
+   /* セラピスト位置（さらに中央寄り＆上げすぎ回避） */
+    --therapist-x: calc(45vw + 4vw + var(--x-bias));
+    --therapist-y: calc(25vh - 1vh);
+
+    /* クライアント位置 */
+   --client-x: calc(50vw - 30vw + var(--x-bias));
+    --client-y: calc(60vh + 8vh);
+}
+
+/* === タブレット（≤768px） ===================== */
+@media (max-width: 768px) {
+  :root {
+    /* 狭くなるので見切れ対策を少し緩める */
+    --clip-inset: 0 80px 0 80px;
+
+    /* HPバー少し小さめ */
+    --hp-top: 12px;
+    --hp-height: 16px;
+
+    /* ★ 狭幅で右寄り補正：全体を左に寄せる（必要に応じて -3vw などへ） */
+    --x-bias: -2vw;
+
+    /* セラピスト位置（少し中央寄り＆上げすぎ回避） */
+  --therapist-x: calc(35vw + 4vw + var(--x-bias));
+    --therapist-y: calc(50vh - 8vh);
+
+    /* クライアント位置 */
+    --client-x: calc(50vw - 30vw + var(--x-bias));
+    --client-y: calc(60vh + 9vh);
+  }
+}
+
+/* === スマホ縦（≤480px） ===================== */
+@media (max-width: 480px) and (orientation: portrait) {
+  :root { --scene-bg: url("/image/backhome1.png"); } /* ← 背景差し替え */
+  :root {
+    --clip-inset: 0 40px 0 40px;
+    --hp-top: 10px;
+    --hp-height: 14px;
+
+    /* ★ さらに左へ補正（右寄りがキツい端末向け） */
+    --x-bias: -5vw; /* 強すぎなら -4vw、弱いなら -6～-7vw */
+
+    /* セラピスト位置（さらに中央寄り＆上げすぎ回避） */
+    --therapist-x: calc(29vw + 4vw + var(--x-bias));
+    --therapist-y: calc(55vh - 8vh);
+
+    /* クライアント位置 */
+    --client-x: calc(50vw - 40vw + var(--x-bias));
+    --client-y: calc(60vh + 13vh);
+  }
+}
+
+/* === PCの超ワイド対策（横長ほど“右/左オフセット”を弱める） === */
+@media (min-aspect-ratio: 16/10) {
+  :root {
+    /* 横に広い画面では中央へ寄せる（x-biasはPCでは基本0のまま） */
+    --therapist-x: calc(50vw + 0vw + var(--x-bias)); /* 6vw → 5vw */
+    --client-x:    calc(50vw - 15vw + var(--x-bias)); /* -10vw → -9vw */
+  }
+}
+@media (min-aspect-ratio: 21/9) {
+  :root {
+    --therapist-x: calc(50vw + 4vw + var(--x-bias)); /* さらに中央寄り */
+    --client-x:    calc(50vw - 8vw + var(--x-bias));
+  }
+}
+
+/* === page.tsx 側から参照する最終座標
+   - left/top に var(--therapist-x) / var(--therapist-y) 等をそのまま使用
+   - 微調整は各要素に style="--dx: 2vw; --dy: -1vh" のように個別付与
+   ==================================================== */
+:root {
+  --therapist-final-x: calc(var(--therapist-x) + var(--dx)); /* ← 必要なら最終値を分けてもOK */
+  --therapist-final-y: calc(var(--therapist-y) + var(--dy));
+  --client-final-x:    calc(var(--client-x) + var(--dx));
+  --client-final-y:    calc(var(--client-y) + var(--dy));
+}
+
+
+/* === メニュー表示中の下層無効化（クリック抜け防止 & 見た目の干渉軽減） === */
+
+/* クリックを下層に通さない（main 全体を無効化） */
+/* ※ page.tsx ではシーンは <main> の中に描画されている想定 */
+html.menu-open main {
+  pointer-events: none;   /* ← 下の吹き出し/webpへクリックが抜けない */
+  filter: saturate(0.9) brightness(0.95); /* ← うっすらトーンダウン（任意） */
+}
+
+/* 右下の起動ボタンはモーダル外でも押せるように pointer を残す（保険） */
+html.menu-open .fixed.bottom-4.right-4 {
+  pointer-events: auto;
+}
+
+/* 背景アニメの左右切り抜きが強い時は干渉感が増すので、メニュー中は弱める（任意） */
+html.menu-open {
+  --clip-inset: 0 40px 0 40px; /* ← 必要なければ消してOK */
 }

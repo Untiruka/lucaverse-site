@@ -90,7 +90,7 @@ export default function AccessPage() {
   </div>
 
   <p className="text-lg">
-    10:00〜17:00
+    10:00〜23:00
   </p>
 
   <p className="text-gray-700 text-[15px]">

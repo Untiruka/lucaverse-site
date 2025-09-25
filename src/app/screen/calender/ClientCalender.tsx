@@ -1,14 +1,13 @@
-// app/screen/calender/ClientCalender.tsx
-'use client' // ← 最上段必須（Client Component 指定）
+'use client'
 
-// ------------------------------------------------------
-// 横スク3ヶ月 + 見切れ対策 + 過去/満了日は黒塗り・無効化
-// ・月ごとスナップ：snap-x / snap-mandatory
-// ・子幅：w-[min(560px,calc(100vw-2rem))] で右端見切れ防止
-// ・セル：min-w-[44px] / 左上=日付丸 / 右下=ステータス
-// ・過去 or full/closed → 黒半透明オーバーレイ＋操作不可
-// ・ここでだけ Supabase を使う（Server側では触らない）
-// ------------------------------------------------------
+
+// ※ デバッグ専用：一時的に入れて確認したら消してOK
+console.log('[ENVCHK] URL present =', typeof process.env.NEXT_PUBLIC_SUPABASE_URL !== 'undefined')
+console.log('[ENVCHK] KEY present =', typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'undefined')
+// 先頭12文字だけ表示してマスク（流出防止）
+if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  console.log('[ENVCHK] URL(head12)=', process.env.NEXT_PUBLIC_SUPABASE_URL.slice(0,12) + '…')
+}
 
 import { useMemo, useState, useEffect } from "react"
 import ConfirmModal from "@/src/app/components/ConfirmModal"
@@ -19,36 +18,19 @@ import ReserveForm from "@/src/app/components/ReserveForm"
 import { getSupabaseBrowser } from '@/lib/supabaseClient'
 import type { ReserveInfo } from "@/src/app/components/ReserveForm"
 
-// ------------------------------------------------------
-// 型定義（any禁止のため最小限を明示）
-// ------------------------------------------------------
 type AvailabilityStatus = "open" | "full" | "closed"
 type AvailabilityMap = Record<string, AvailabilityStatus>
+type FormValues = { name: string; tel: string; email: string; coupon1?: string }
 
-type FormValues = {
-  // 予約者基本情報
-  name: string
-  tel: string
-  email: string
-  // 任意クーポン
-  coupon1?: string
-}
-
-// ------------------------------------------------------
-// 空き状況（サンプル）："YYYY-MM-DD": "open" | "full" | "closed"
-// ------------------------------------------------------
 const availability: AvailabilityMap = {
-  // "2025-08-05": "open",
-  // "2025-08-06": "full",
+  "2025-09-25": "open",
+  "2025-09-26": "full",
+  "2025-10-10": "open",
 }
 
-// ------------------------------------------------------
-// デフォルトエクスポートは **1つだけ**（重複exportエラー対策）
-// ・同コンポーネント内で supabase を生成してスコープ解決（Client内だけで作る）
-// ------------------------------------------------------
 export default function ClientCalender() {
-  // Supabase クライアントを「呼ばれた時にだけ」生成（ビルド時未定義対策）
-  const supabase = getSupabaseBrowser()
+  // ✅ ここで初期化（useMemo内に移動）
+  const supabase = useMemo(() => getSupabaseBrowser(), [])
 
   const [modalDate, setModalDate] = useState<string | null>(null)
   const [reserveInfo, setReserveInfo] = useState<ReserveInfo | null>(null)
@@ -56,7 +38,6 @@ export default function ClientCalender() {
   const [formValues, setFormValues] = useState<FormValues | null>(null)
   const [isFirst, setIsFirst] = useState<boolean | null>(null)
 
-  // 全閉じ（モーダル等の状態をまとめてリセット）
   const closeAll = () => {
     setReserveInfo(null)
     setFormValues(null)
@@ -65,7 +46,6 @@ export default function ClientCalender() {
     setIsFirst(null)
   }
 
-  // スクロールバー非表示スタイル注入（※ブラウザでだけ実行）
   useEffect(() => {
     const style = document.createElement("style")
     style.innerHTML = `
@@ -76,19 +56,18 @@ export default function ClientCalender() {
     return () => { document.head.removeChild(style) }
   }, [])
 
+  // 以降のUI部分は元コードと同じ --------------------------
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 via-white to-amber-50 text-gray-800 font-yusei antialiased">
+    <div className="min-h-screen bg-gray-900 text-gray-200 font-conti antialiased">
       <MassageHeader />
-
       <main className="pt-20 pb-24 px-3 max-w-md mx-auto md:pt-24 md:pb-28 md:px-6 md:max-w-3xl">
-        <div className="bg-white rounded-2xl border border-amber-100 shadow p-4 md:p-6">
-          <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+        <div className="bg-gray-800 rounded-lg border border-cyan-400/50 p-4 md:p-6">
+          <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-3"
+              style={{ textShadow: '0 0 5px #06b6d4' }}>
+            <span className="inline-block h-2 w-2 rounded-full bg-cyan-400" />
             空き状況カレンダー
           </h1>
-
-          {/* 横スク3ヶ月（右端見切れ防止：内側paddingと子幅を調整） */}
-          <div className="rounded-xl border border-amber-100 bg-white">
+          <div className="rounded-lg border border-gray-700 bg-black/50">
             <HorizontalCalendar
               months={3}
               onSelectDate={setModalDate}
@@ -97,18 +76,16 @@ export default function ClientCalender() {
           </div>
         </div>
       </main>
-
       <MassageFooter />
 
-      {/* 日付選択モーダル */}
+      {/* 以下モーダル処理は元コードと同じ */}
       {modalDate && !reserveInfo && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45">
-          <div className="bg-white rounded-2xl border border-amber-100 shadow-2xl w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4">
             <DayModal
               date={modalDate}
               onClose={() => setModalDate(null)}
               onReserve={(info) => {
-                // コメント：日付モーダルから予約情報（仮）を受け取りフォームへ
                 setReserveInfo(info)
                 setModalDate(null)
               }}
@@ -117,14 +94,12 @@ export default function ClientCalender() {
         </div>
       )}
 
-      {/* 入力フォーム */}
       {reserveInfo && !confirming && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45">
-          <div className="bg-white rounded-2xl border border-amber-100 shadow-2xl w-full max-w-lg mx-4 p-4 md:p-5">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4 p-4 md:p-5">
             <ReserveForm
               info={reserveInfo}
               onNext={async (values: FormValues) => {
-                // --- 初回判定（過去に確定予約があるか） ---
                 const { data: prev } = await supabase
                   .from("reservation")
                   .select("id")
@@ -133,12 +108,10 @@ export default function ClientCalender() {
                   .limit(1)
 
                 const firstTime = !prev || prev.length === 0
-
-                // --- クーポン例（coupon1） ---
                 let validCouponDiscount = 0
                 let usedCouponCode = ""
                 if (values.coupon1) {
-                  const todayIso = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+                  const todayIso = new Date().toISOString().slice(0, 10)
                   const { data: c } = await supabase
                     .from("coupons")
                     .select("amount")
@@ -147,25 +120,15 @@ export default function ClientCalender() {
                     .gte("valid_from", todayIso)
                     .lte("valid_until", todayIso)
                     .single()
-
                   if (c && typeof c.amount === "number") {
                     validCouponDiscount = c.amount
                     usedCouponCode = values.coupon1
                   }
                 }
-
-                // --- 金額計算 ---
                 let finalPrice = reserveInfo.basePrice
                 if (firstTime && reserveInfo.firstPrice) finalPrice = reserveInfo.firstPrice
                 if (validCouponDiscount) finalPrice = Math.max(finalPrice - validCouponDiscount, 0)
-
-                // --- 反映 ---
-                setReserveInfo({
-                  ...reserveInfo,
-                  finalPrice,
-                  couponDiscount: validCouponDiscount,
-                  couponCode: usedCouponCode,
-                })
+                setReserveInfo({ ...reserveInfo, finalPrice, couponDiscount: validCouponDiscount, couponCode: usedCouponCode })
                 setFormValues(values)
                 setIsFirst(firstTime)
                 setConfirming(true)
@@ -174,7 +137,7 @@ export default function ClientCalender() {
             />
             <div className="mt-3 flex justify-end">
               <button
-                className="inline-flex items-center rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 text-sm transition"
+                className="inline-flex items-center rounded-md bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 text-sm transition"
                 onClick={closeAll}
               >
                 閉じる
@@ -184,17 +147,16 @@ export default function ClientCalender() {
         </div>
       )}
 
-      {/* 確認モーダル */}
       {reserveInfo && confirming && formValues && isFirst !== null && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45">
-          <div className="bg-white rounded-2xl border border-amber-100 shadow-2xl w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-800 rounded-lg border border-cyan-400/50 shadow-2xl w-full max-w-lg mx-4">
             <ConfirmModal
               date={reserveInfo.date}
               course={reserveInfo.course}
               slot={reserveInfo.slot}
               name={formValues.name}
               tel={formValues.tel}
-              finalPrice={reserveInfo.finalPrice!} // ←（ReserveInfo側でoptionalなら実値確定後に使用）
+              finalPrice={reserveInfo.finalPrice!}
               email={formValues.email}
               isFirst={isFirst}
               onBack={() => setConfirming(false)}
@@ -206,6 +168,9 @@ export default function ClientCalender() {
     </div>
   )
 }
+
+// HorizontalCalendar 以下は元のまま
+
 
 /* ======================================================
    横スク3ヶ月カレンダー（元UIそのまま）
